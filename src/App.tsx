@@ -150,16 +150,17 @@ export default function App() {
   // ✅ yeni: her elde timer’ı yeniden başlatmak için round sayacı
   const [roundId, setRoundId] = useState(0);
 
-  const assets = useMemo(
-    () => ({
-      doorFrame: "/door_frame.png",
-      doorLeaf: "/door_leaf.png",
-      monsterImg: "/monster.png",
-      creak: "/door.mp3",
-      monster: "/monster.mp3",
-    }),
-    []
-  );
+ const assets = useMemo(() => {
+  const base = import.meta.env.BASE_URL; // örn: "/horror-door-game/"
+  return {
+    doorFrame: `${base}door_frame.png`,
+    doorLeaf: `${base}door_leaf.png`,
+    monsterImg: `${base}monster.png`,
+    creak: `${base}door.mp3`,
+    monster: `${base}monster.mp3`,
+  };
+}, []);
+
 
   // Audio
   const creakRef = useRef<HTMLAudioElement | null>(null);
