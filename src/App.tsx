@@ -6,9 +6,15 @@ const CHECKPOINT_LEVEL = 5;
 const MAX_LEVEL = 10;
 
 type Phase = "PLAYING" | "OUT";
+type Screen = "MENU" | "SETTINGS" | "CREDITS" | "GAME";
+type Lang = "tr" | "en" | "de" | "ru" | "fr";
+type Difficulty = "easy" | "normal" | "hard";
+
 const rand = (max: number) => Math.floor(Math.random() * max);
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+const clamp01 = (n: number) => clamp(n, 0, 1);
 
+// --- heartbeat wav (dosyasız) ---
 function makeHeartbeatWavDataUri() {
   const sr = 44100;
   const dur = 0.42;
@@ -112,18 +118,379 @@ async function warmUpAudioDevice() {
   } catch {}
 }
 
+// ---------- i18n ----------
+type Dict = Record<string, string>;
+const translations: Record<Lang, Dict> = {
+  tr: {
+    menuHint: "Ne yapmak istersin?",
+    newGame: "Yeni Oyun",
+    continue: "Devam Et",
+    settings: "Ayarlar",
+    back: "Geri",
+    credits: "Credits",
+
+    settingsTitle: "Ayarlar",
+    langTitle: "DİL",
+    audioTitle: "SES",
+    difficultyTitle: "ZORLUK",
+    difficulty_easy: "Kolay",
+    difficulty_normal: "Normal",
+    difficulty_hard: "Zor",
+    criticalTitle: "KRİTİK KORKU",
+    criticalOn: "Açık",
+    criticalOff: "Kapalı",
+
+    master: "Genel",
+    sfxDoor: "Kapı",
+    sfxMonster: "Canavar",
+    sfxHeartbeat: "Nabız",
+    test: "Test",
+
+    creditsTitle: "Credits",
+    developer: "Developer",
+    story: "Hikaye Emektarı",
+
+    diedTitle: "Öldün",
+    adText:
+      "Reklam izlersen +2 hak alıp aynı elde devam edersin. Reklam istemiyorsan checkpoint varsa oradan dönersin.",
+    watchAd: "Reklam İzle (+2 Hak)",
+    adLoading: "Reklam yükleniyor...",
+    startLevel1: "Seviye 1'den Başla",
+    continueCheckpoint: "Devam Et (Checkpoint)",
+
+    levelTitle: "Seviye {level}",
+    subtitleNeedAudio: "İlk dokunuşta ses açılacak.",
+    subtitleFindDoor: "Güvenli kapıyı bul.",
+    pulseLabel: "Nabız",
+    survived: "Hayatta Kaldın",
+
+    hudLives: "Hak",
+    hudCheckpoint: "Checkpoint",
+    hudLevel: "Seviye",
+    hudWard: "Tılsım",
+    menuButton: "Menü",
+
+    continueDisabled: "Kayıt yok",
+    curse: "LANET",
+
+    listenHint: "Basılı tut: 0.45sn dinle • 1.0sn işaret",
+    mark: "İŞARET",
+  },
+  en: {
+    menuHint: "What do you want to do?",
+    newGame: "New Game",
+    continue: "Continue",
+    settings: "Settings",
+    back: "Back",
+    credits: "Credits",
+
+    settingsTitle: "Settings",
+    langTitle: "LANGUAGE",
+    audioTitle: "AUDIO",
+    difficultyTitle: "DIFFICULTY",
+    difficulty_easy: "Easy",
+    difficulty_normal: "Normal",
+    difficulty_hard: "Hard",
+    criticalTitle: "CRITICAL SCARE",
+    criticalOn: "On",
+    criticalOff: "Off",
+
+    master: "Master",
+    sfxDoor: "Door",
+    sfxMonster: "Monster",
+    sfxHeartbeat: "Heartbeat",
+    test: "Test",
+
+    creditsTitle: "Credits",
+    developer: "Developer",
+    story: "Story",
+
+    diedTitle: "You Died",
+    adText: "Watch an ad to get +2 lives and continue. Or return to checkpoint if available.",
+    watchAd: "Watch Ad (+2 Lives)",
+    adLoading: "Loading ad...",
+    startLevel1: "Start from Level 1",
+    continueCheckpoint: "Continue (Checkpoint)",
+
+    levelTitle: "Level {level}",
+    subtitleNeedAudio: "Sound enables on first touch.",
+    subtitleFindDoor: "Find the safe door.",
+    pulseLabel: "Pulse",
+    survived: "You Survived",
+
+    hudLives: "Lives",
+    hudCheckpoint: "Checkpoint",
+    hudLevel: "Level",
+    hudWard: "Ward",
+    menuButton: "Menu",
+
+    continueDisabled: "No save",
+    curse: "CURSE",
+
+    listenHint: "Hold: 0.45s listen • 1.0s mark",
+    mark: "MARK",
+  },
+  de: {
+    menuHint: "Was möchtest du tun?",
+    newGame: "Neues Spiel",
+    continue: "Fortsetzen",
+    settings: "Einstellungen",
+    back: "Zurück",
+    credits: "Credits",
+
+    settingsTitle: "Einstellungen",
+    langTitle: "SPRACHE",
+    audioTitle: "AUDIO",
+    difficultyTitle: "SCHWIERIGKEIT",
+    difficulty_easy: "Leicht",
+    difficulty_normal: "Normal",
+    difficulty_hard: "Schwer",
+    criticalTitle: "KRITISCHER SCHRECK",
+    criticalOn: "An",
+    criticalOff: "Aus",
+
+    master: "Master",
+    sfxDoor: "Tür",
+    sfxMonster: "Monster",
+    sfxHeartbeat: "Puls",
+    test: "Test",
+
+    creditsTitle: "Credits",
+    developer: "Developer",
+    story: "Story",
+
+    diedTitle: "Du bist gestorben",
+    adText: "Werbung ansehen: +2 Leben und weitermachen. Oder zum Checkpoint zurück.",
+    watchAd: "Werbung ansehen (+2 Leben)",
+    adLoading: "Werbung lädt...",
+    startLevel1: "Ab Level 1 starten",
+    continueCheckpoint: "Weiter (Checkpoint)",
+
+    levelTitle: "Level {level}",
+    subtitleNeedAudio: "Sound beim ersten Tip aktiv.",
+    subtitleFindDoor: "Finde die sichere Tür.",
+    pulseLabel: "Puls",
+    survived: "Du hast überlebt",
+
+    hudLives: "Leben",
+    hudCheckpoint: "Checkpoint",
+    hudLevel: "Level",
+    hudWard: "Ward",
+    menuButton: "Menü",
+
+    continueDisabled: "Kein Save",
+    curse: "FLUCH",
+
+    listenHint: "Halten: hören/markieren",
+    mark: "MARK",
+  },
+  ru: {
+    menuHint: "Что хочешь сделать?",
+    newGame: "Новая игра",
+    continue: "Продолжить",
+    settings: "Настройки",
+    back: "Назад",
+    credits: "Credits",
+
+    settingsTitle: "Настройки",
+    langTitle: "ЯЗЫК",
+    audioTitle: "ЗВУК",
+    difficultyTitle: "СЛОЖНОСТЬ",
+    difficulty_easy: "Легко",
+    difficulty_normal: "Нормально",
+    difficulty_hard: "Сложно",
+    criticalTitle: "КРИТИЧЕСКИЙ СКРИМЕР",
+    criticalOn: "Вкл",
+    criticalOff: "Выкл",
+
+    master: "Общий",
+    sfxDoor: "Дверь",
+    sfxMonster: "Монстр",
+    sfxHeartbeat: "Пульс",
+    test: "Тест",
+
+    creditsTitle: "Credits",
+    developer: "Developer",
+    story: "Сюжет",
+
+    diedTitle: "Ты погиб",
+    adText: "Смотри рекламу: +2 жизни и продолжай. Или вернись к чекпоинту.",
+    watchAd: "Смотреть рекламу (+2 жизни)",
+    adLoading: "Загрузка рекламы...",
+    startLevel1: "Начать с уровня 1",
+    continueCheckpoint: "Продолжить (Checkpoint)",
+
+    levelTitle: "Уровень {level}",
+    subtitleNeedAudio: "Звук включится при первом касании.",
+    subtitleFindDoor: "Найди безопасную дверь.",
+    pulseLabel: "Пульс",
+    survived: "Ты выжил",
+
+    hudLives: "Жизни",
+    hudCheckpoint: "Checkpoint",
+    hudLevel: "Уровень",
+    hudWard: "Ward",
+    menuButton: "Меню",
+
+    continueDisabled: "Нет сохранения",
+    curse: "ПРОКЛЯТИЕ",
+
+    listenHint: "Удерживай: слушать/пометить",
+    mark: "MARK",
+  },
+  fr: {
+    menuHint: "Que veux-tu faire ?",
+    newGame: "Nouvelle partie",
+    continue: "Continuer",
+    settings: "Paramètres",
+    back: "Retour",
+    credits: "Crédits",
+
+    settingsTitle: "Paramètres",
+    langTitle: "LANGUE",
+    audioTitle: "SON",
+    difficultyTitle: "DIFFICULTÉ",
+    difficulty_easy: "Facile",
+    difficulty_normal: "Normal",
+    difficulty_hard: "Difficile",
+    criticalTitle: "FRAYEUR CRITIQUE",
+    criticalOn: "On",
+    criticalOff: "Off",
+
+    master: "Global",
+    sfxDoor: "Porte",
+    sfxMonster: "Monstre",
+    sfxHeartbeat: "Pouls",
+    test: "Test",
+
+    creditsTitle: "Crédits",
+    developer: "Developer",
+    story: "Histoire",
+
+    diedTitle: "Tu es mort",
+    adText: "Regarde une pub : +2 vies et continue. Ou retourne au checkpoint.",
+    watchAd: "Regarder la pub (+2 vies)",
+    adLoading: "Chargement...",
+    startLevel1: "Recommencer au niveau 1",
+    continueCheckpoint: "Continuer (Checkpoint)",
+
+    levelTitle: "Niveau {level}",
+    subtitleNeedAudio: "Le son s'activera au premier toucher.",
+    subtitleFindDoor: "Trouve la porte sûre.",
+    pulseLabel: "Pouls",
+    survived: "Tu as survécu",
+
+    hudLives: "Vies",
+    hudCheckpoint: "Checkpoint",
+    hudLevel: "Niveau",
+    hudWard: "Ward",
+    menuButton: "Menu",
+
+    continueDisabled: "Pas de sauvegarde",
+    curse: "MALÉDICTION",
+
+    listenHint: "Maintiens : écouter/marquer",
+    mark: "MARK",
+  },
+};
+
+const langLabel: Record<Lang, string> = { tr: "TR", en: "EN", de: "DE", ru: "RU", fr: "FR" };
+function format(str: string, vars: Record<string, string | number>) {
+  return str.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+}
+
+// ---------- storage ----------
+const LS_SETTINGS = "kapi_settings_v4";
+const LS_PROGRESS = "kapi_progress_v4";
+
+type SavedSettings = {
+  lang: Lang;
+  difficulty: Difficulty;
+  criticalScare: boolean;
+  vol: { master: number; door: number; monster: number; heartbeat: number };
+};
+
+type SavedProgress = {
+  hasSave: true;
+  level: number;
+  lives: number;
+  maxReachedLevel: number;
+  phase: Phase;
+  ward: number;
+  streak: number;
+};
+
+function safeJsonParse<T>(s: string | null): T | null {
+  if (!s) return null;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
+  const [screen, setScreen] = useState<Screen>("MENU");
+
+  // settings
+  const [lang, setLang] = useState<Lang>("tr");
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
+  const [criticalScare, setCriticalScare] = useState(true);
+  const [vol, setVol] = useState({ master: 0.9, door: 0.35, monster: 0.95, heartbeat: 0.46 });
+
+  const dict = translations[lang];
+  const t = (key: string, vars?: Record<string, string | number>) => {
+    const base = dict[key] ?? translations.tr[key] ?? key;
+    return vars ? format(base, vars) : base;
+  };
+
+  // progress/game
   const [audioReady, setAudioReady] = useState(false);
   const audioReadyRef = useRef(false);
+  const unlockingRef = useRef(false);
 
   const [phase, setPhase] = useState<Phase>("PLAYING");
   const [level, setLevel] = useState(1);
   const [maxReachedLevel, setMaxReachedLevel] = useState(1);
   const [lives, setLives] = useState(MAX_LIVES);
+  const [hasSave, setHasSave] = useState(false);
+
+  // mechanics
+  const [streak, setStreak] = useState(0);
+  const [ward, setWard] = useState(0);
+
+  // corridor drag (2D)
+  const [yaw, setYaw] = useState(0); // -1..1
+  const yawRef = useRef(0);
+  useEffect(() => {
+    yawRef.current = yaw;
+  }, [yaw]);
+
+  const dragRef = useRef<{ dragging: boolean; startX: number; startYaw: number; pointerId: number | null }>({
+    dragging: false,
+    startX: 0,
+    startYaw: 0,
+    pointerId: null,
+  });
+
+  // listen/mark
+  const [marks, setMarks] = useState<boolean[]>(() => Array.from({ length: DOOR_COUNT }).map(() => false));
+  const [listenText, setListenText] = useState<string | null>(null);
+  const listenTimerRef = useRef<number | null>(null);
+
+  const suppressClickRef = useRef(false);
+  const holdListenRef = useRef<number | null>(null);
+  const holdMarkRef = useRef<number | null>(null);
+
+  const levelRef = useRef(1);
+  useEffect(() => {
+    levelRef.current = level;
+  }, [level]);
 
   const [safeDoor, setSafeDoor] = useState(() => rand(DOOR_COUNT));
-  const [openedDoor, setOpenedDoor] = useState<number | null>(null);
+  const [cursedDoor, setCursedDoor] = useState<number | null>(null);
 
+  const [openedDoor, setOpenedDoor] = useState<number | null>(null);
   const [hoverDoor, setHoverDoor] = useState<number | null>(null);
   const [openingDoor, setOpeningDoor] = useState<number | null>(null);
 
@@ -136,85 +503,183 @@ export default function App() {
   const [pulse, setPulse] = useState(false);
   const pulseTimer = useRef<number | null>(null);
 
+  const [critical, setCritical] = useState(false);
+  const criticalTimer = useRef<number | null>(null);
+
   const [winFlash, setWinFlash] = useState(false);
   const [winDoor, setWinDoor] = useState<number | null>(null);
   const winTimer = useRef<number | null>(null);
 
   const [adLoading, setAdLoading] = useState(false);
 
+  // timer
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const roundTotalMsRef = useRef(15000);
   const timerInterval = useRef<number | null>(null);
   const timeoutLockRef = useRef(false);
-
-  // ✅ yeni: her elde timer’ı yeniden başlatmak için round sayacı
   const [roundId, setRoundId] = useState(0);
 
- const assets = useMemo(() => {
-  const base = import.meta.env.BASE_URL; // örn: "/horror-door-game/"
-  return {
-    doorFrame: `${base}door_frame.png`,
-    doorLeaf: `${base}door_leaf.png`,
-    monsterImg: `${base}monster.png`,
-    creak: `${base}door.mp3`,
-    monster: `${base}monster.mp3`,
-  };
-}, []);
+  const assets = useMemo(
+    () => ({
+      doorFrame: "/door_frame.png",
+      doorLeaf: "/door_leaf.png",
+      monsterImg: "/monster.png",
+      creak: "/door.mp3",
+      monster: "/monster.mp3",
+    }),
+    []
+  );
 
-
-  // Audio
-  const creakRef = useRef<HTMLAudioElement | null>(null);
+  // audio refs (HTMLAudio)
   const monsterRef = useRef<HTMLAudioElement | null>(null);
-
   const hbUriRef = useRef<string | null>(null);
   const hbARef = useRef<HTMLAudioElement | null>(null);
   const hbBRef = useRef<HTMLAudioElement | null>(null);
   const hbToggleRef = useRef(false);
 
-  // Heartbeat scheduler
+  // tiny ambient via AudioContext (for listening)
+  const ambientCtxRef = useRef<AudioContext | null>(null);
+  const ambientMasterRef = useRef<GainNode | null>(null);
+
+  // heartbeat scheduler
   const beatMsRef = useRef(1200);
   const hbTimerRef = useRef<number | null>(null);
   const hbRunningRef = useRef(false);
 
-  // Refs
   const phaseRef = useRef<Phase>("PLAYING");
   const scareRef = useRef(false);
   const timeLeftMsRef = useRef(0);
+  const screenRef = useRef<Screen>("MENU");
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
-
   useEffect(() => {
     scareRef.current = scare;
   }, [scare]);
-
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
   useEffect(() => {
     timeLeftMsRef.current = timeLeftMs;
 
     const total = roundTotalMsRef.current || 1;
     const ratio = clamp(timeLeftMs / total, 0, 1);
-    beatMsRef.current = ratio > 0.66 ? 1200 : ratio > 0.33 ? 900 : 650;
-  }, [timeLeftMs]);
+    const base = difficulty === "easy" ? 1300 : difficulty === "hard" ? 1050 : 1200;
+    beatMsRef.current = ratio > 0.66 ? base : ratio > 0.33 ? base * 0.75 : base * 0.54;
+  }, [timeLeftMs, difficulty]);
 
-  const safePlay = async (el: HTMLAudioElement | null, volume: number) => {
-    if (!audioReadyRef.current || !el) return;
+  // load settings + progress
+  useEffect(() => {
+    const s = safeJsonParse<SavedSettings>(localStorage.getItem(LS_SETTINGS));
+    if (s) {
+      if (s.lang) setLang(s.lang);
+      if (s.difficulty) setDifficulty(s.difficulty);
+      if (typeof s.criticalScare === "boolean") setCriticalScare(s.criticalScare);
+      if (s.vol) {
+        setVol({
+          master: clamp01(s.vol.master ?? 0.9),
+          door: clamp01(s.vol.door ?? 0.35),
+          monster: clamp01(s.vol.monster ?? 0.95),
+          heartbeat: clamp01(s.vol.heartbeat ?? 0.46),
+        });
+      }
+    }
+
+    const p = safeJsonParse<SavedProgress>(localStorage.getItem(LS_PROGRESS));
+    if (p?.hasSave) {
+      setHasSave(true);
+      setLevel(clamp(p.level ?? 1, 1, MAX_LEVEL));
+      setLives(clamp(p.lives ?? MAX_LIVES, 0, MAX_LIVES));
+      setMaxReachedLevel(clamp(p.maxReachedLevel ?? 1, 1, MAX_LEVEL));
+      setPhase((p.phase ?? "PLAYING") as Phase);
+      setWard(clamp(p.ward ?? 0, 0, 1));
+      setStreak(clamp(p.streak ?? 0, 0, 999));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // save settings
+  useEffect(() => {
+    const payload: SavedSettings = {
+      lang,
+      difficulty,
+      criticalScare,
+      vol: {
+        master: clamp01(vol.master),
+        door: clamp01(vol.door),
+        monster: clamp01(vol.monster),
+        heartbeat: clamp01(vol.heartbeat),
+      },
+    };
     try {
-      el.volume = volume;
+      localStorage.setItem(LS_SETTINGS, JSON.stringify(payload));
+    } catch {}
+  }, [lang, difficulty, criticalScare, vol.master, vol.door, vol.monster, vol.heartbeat]);
+
+  // save progress
+  useEffect(() => {
+    if (!hasSave) return;
+    const payload: SavedProgress = {
+      hasSave: true,
+      level,
+      lives,
+      maxReachedLevel,
+      phase,
+      ward,
+      streak,
+    };
+    try {
+      localStorage.setItem(LS_PROGRESS, JSON.stringify(payload));
+    } catch {}
+  }, [hasSave, level, lives, maxReachedLevel, phase, ward, streak]);
+
+  const ensureSaveEnabled = () => {
+    if (!hasSave) setHasSave(true);
+  };
+
+  const clearSave = () => {
+    setHasSave(false);
+    try {
+      localStorage.removeItem(LS_PROGRESS);
+    } catch {}
+  };
+
+  // ---------- AUDIO ----------
+  const effectiveMaster = clamp01(vol.master);
+
+  const safePlay = async (el: HTMLAudioElement | null, volume01: number) => {
+    if (!audioReadyRef.current || !el) return;
+    const v = clamp01(volume01) * effectiveMaster;
+    if (v <= 0.0001) return;
+    try {
+      el.pause();
       el.currentTime = 0;
+      el.volume = v;
       await el.play();
     } catch {}
   };
 
-  const playCreak = () => void safePlay(creakRef.current, 0.3);
-  const playMonster = () => void safePlay(monsterRef.current, 0.95);
+  const playCreak = async (mult = 1) => {
+    if (!audioReadyRef.current) return;
+    const v = clamp01(vol.door * mult) * effectiveMaster;
+    if (v <= 0.0001) return;
+    try {
+      const a = new Audio(assets.creak);
+      a.volume = v;
+      a.currentTime = 0;
+      await a.play();
+    } catch {}
+  };
 
-  const playHeartbeat = (vol = 0.46) => {
+  const playMonster = (boost = 1) => void safePlay(monsterRef.current, clamp01(vol.monster * boost));
+
+  const playHeartbeat = () => {
     if (!audioReadyRef.current) return;
     const pick = hbToggleRef.current ? hbBRef.current : hbARef.current;
     hbToggleRef.current = !hbToggleRef.current;
     if (!pick) return;
-    void safePlay(pick, vol);
+    void safePlay(pick, vol.heartbeat);
   };
 
   const startHeartbeatLoop = (initialDelayMs?: number) => {
@@ -228,10 +693,10 @@ export default function App() {
         audioReadyRef.current &&
         phaseRef.current === "PLAYING" &&
         !scareRef.current &&
-        timeLeftMsRef.current > 0;
+        timeLeftMsRef.current > 0 &&
+        screenRef.current === "GAME";
 
-      if (ok) playHeartbeat(0.46);
-
+      if (ok) playHeartbeat();
       hbTimerRef.current = window.setTimeout(tick, beatMsRef.current);
     };
 
@@ -247,16 +712,131 @@ export default function App() {
     }
   };
 
-  const triggerPulse = () => {
-    setPulse(true);
-    if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
-    pulseTimer.current = window.setTimeout(() => setPulse(false), 220);
+  const ensureAmbientCtx = async () => {
+    const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext | undefined;
+    if (!Ctx) return;
+    if (!ambientCtxRef.current) {
+      ambientCtxRef.current = new Ctx();
+      ambientMasterRef.current = ambientCtxRef.current.createGain();
+      ambientMasterRef.current.gain.value = 0.22;
+      ambientMasterRef.current.connect(ambientCtxRef.current.destination);
+    }
+    try {
+      await ambientCtxRef.current.resume();
+    } catch {}
   };
 
-  const triggerScare = () => {
+  // kısa “uğultu / rüzgar” (dosyasız)
+  const playListenAmbient = async (ms = 520) => {
+    if (!audioReadyRef.current) return;
+    await ensureAmbientCtx();
+    const ctx = ambientCtxRef.current;
+    const master = ambientMasterRef.current;
+    if (!ctx || !master) return;
+
+    const dur = clamp(ms, 120, 1400) / 1000;
+
+    const bufferSize = Math.floor(ctx.sampleRate * dur);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    // “wind/noise”
+    let last = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      last = last * 0.92 + white * 0.08; // biraz yumuşatma
+      data[i] = last * 0.6;
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 140;
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1200;
+
+    const gain = ctx.createGain();
+    const baseVol = clamp01(vol.door * 0.55) * effectiveMaster; // dinleme sesini “kapı” kanalından yönetelim
+    gain.gain.value = Math.max(0.0001, baseVol * 0.28);
+
+    // fade in/out
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(gain.gain.value, now + 0.06);
+    gain.gain.linearRampToValueAtTime(0.0001, now + dur);
+
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(gain);
+    gain.connect(master);
+
+    try {
+      src.start();
+      src.stop(now + dur + 0.02);
+    } catch {}
+  };
+
+  const unlockAudio = async () => {
+    if (audioReadyRef.current) return;
+    if (unlockingRef.current) return;
+
+    unlockingRef.current = true;
+    try {
+      audioReadyRef.current = true;
+      setAudioReady(true);
+
+      if (!monsterRef.current) monsterRef.current = new Audio(assets.monster);
+      if (!hbUriRef.current) hbUriRef.current = makeHeartbeatWavDataUri();
+      if (!hbARef.current) hbARef.current = new Audio(hbUriRef.current);
+      if (!hbBRef.current) hbBRef.current = new Audio(hbUriRef.current);
+
+      await warmUpAudioDevice();
+      await ensureAmbientCtx();
+
+      // prime
+      try {
+        const h = hbARef.current!;
+        const old = h.volume;
+        h.volume = 0.0001;
+        await h.play();
+        h.pause();
+        h.currentTime = 0;
+        h.volume = old;
+      } catch {}
+
+      startHeartbeatLoop(900);
+    } finally {
+      unlockingRef.current = false;
+    }
+  };
+
+  // gesture içinde çağır
+  const ensureAudioNoPopupSync = () => {
+    if (audioReadyRef.current) return;
+    void unlockAudio();
+  };
+
+  // ---------- FX ----------
+  const triggerPulse = (ms = 220) => {
+    setPulse(true);
+    if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
+    pulseTimer.current = window.setTimeout(() => setPulse(false), ms);
+  };
+
+  const triggerScare = (ms = 420) => {
     setScare(true);
     if (scareTimer.current) window.clearTimeout(scareTimer.current);
-    scareTimer.current = window.setTimeout(() => setScare(false), 420);
+    scareTimer.current = window.setTimeout(() => setScare(false), ms);
+  };
+
+  const triggerCritical = () => {
+    setCritical(true);
+    if (criticalTimer.current) window.clearTimeout(criticalTimer.current);
+    criticalTimer.current = window.setTimeout(() => setCritical(false), 520);
   };
 
   const triggerWin = (doorIndex: number) => {
@@ -276,8 +856,11 @@ export default function App() {
     closingTimer.current = window.setTimeout(() => setClosingDoor(null), 980);
   };
 
+  // ---------- timer/difficulty ----------
   const calcRoundMs = (lvl: number) => {
-    const sec = clamp(17 - Math.floor(lvl * 0.6), 11, 17);
+    const baseSec = clamp(17 - Math.floor(lvl * 0.6), 11, 17);
+    const mult = difficulty === "easy" ? 1.12 : difficulty === "hard" ? 0.86 : 1.0;
+    const sec = clamp(Math.round(baseSec * mult), 9, 20);
     return sec * 1000;
   };
 
@@ -288,148 +871,343 @@ export default function App() {
     }
   };
 
-  const startNewRoundTimer = (lvl: number) => {
+  const rollCursedDoor = (safe: number) => {
+    let d = rand(DOOR_COUNT);
+    if (d === safe) d = (d + 1) % DOOR_COUNT;
+    return d;
+  };
+
+  const resetRoundVisuals = () => {
+    setMarks(Array.from({ length: DOOR_COUNT }).map(() => false));
+    setYaw(0);
+  };
+
+  const startNewRoundTimer = (lvl: number, nextSafeDoor?: number) => {
     const total = calcRoundMs(lvl);
     roundTotalMsRef.current = total;
-    beatMsRef.current = 1200;
     timeoutLockRef.current = false;
     setTimeLeftMs(total);
-
-    // ✅ kritik: round değişsin ki timer effect yeniden başlasın
     setRoundId((r) => r + 1);
+
+    const safe = typeof nextSafeDoor === "number" ? nextSafeDoor : safeDoor;
+    setCursedDoor(rollCursedDoor(safe));
+
+    resetRoundVisuals();
   };
 
-  const newHandSameLevel = () => {
-    startClosingSlow(openedDoor);
-    setOpenedDoor(null);
-    setOpeningDoor(null);
-    setHoverDoor(null);
-
-    setSafeDoor(rand(DOOR_COUNT));
-    startNewRoundTimer(level);
-  };
-
-  const newHandNextLevel = () => {
-    startClosingSlow(openedDoor);
-    const nl = Math.min(level + 1, MAX_LEVEL);
-
-    setLevel(nl);
-    setMaxReachedLevel((prev) => Math.max(prev, nl));
-
-    setOpenedDoor(null);
-    setOpeningDoor(null);
-    setHoverDoor(null);
-
-    setSafeDoor(rand(DOOR_COUNT));
-    startNewRoundTimer(nl);
-  };
-
-  const getStartLevelFromCheckpoint = () =>
-    maxReachedLevel >= CHECKPOINT_LEVEL ? CHECKPOINT_LEVEL : 1;
+  const getStartLevelFromCheckpoint = () => (maxReachedLevel >= CHECKPOINT_LEVEL ? CHECKPOINT_LEVEL : 1);
 
   const restartFromCheckpoint = () => {
+    ensureAudioNoPopupSync();
+    ensureSaveEnabled();
+
     const startLevel = getStartLevelFromCheckpoint();
 
     setPhase("PLAYING");
     setLives(MAX_LIVES);
+
     setLevel(startLevel);
     setMaxReachedLevel((prev) => Math.max(prev, startLevel));
+
+    setStreak(0);
+    setWard(0);
 
     startClosingSlow(openedDoor);
     setOpenedDoor(null);
     setOpeningDoor(null);
     setHoverDoor(null);
 
-    setSafeDoor(rand(DOOR_COUNT));
-    startNewRoundTimer(startLevel);
+    const ns = rand(DOOR_COUNT);
+    setSafeDoor(ns);
+    startNewRoundTimer(startLevel, ns);
+
+    setScreen("GAME");
   };
 
-  const unlockAudio = async () => {
-    audioReadyRef.current = true;
-    setAudioReady(true);
+  const restartFromLevel1 = () => {
+    ensureAudioNoPopupSync();
+    ensureSaveEnabled();
 
-    if (!creakRef.current) creakRef.current = new Audio(assets.creak);
-    if (!monsterRef.current) monsterRef.current = new Audio(assets.monster);
+    setPhase("PLAYING");
+    setLives(MAX_LIVES);
 
-    if (!hbUriRef.current) hbUriRef.current = makeHeartbeatWavDataUri();
-    if (!hbARef.current) hbARef.current = new Audio(hbUriRef.current);
-    if (!hbBRef.current) hbBRef.current = new Audio(hbUriRef.current);
+    setLevel(1);
+    setMaxReachedLevel(1);
 
-    await warmUpAudioDevice();
+    setStreak(0);
+    setWard(0);
 
-    try {
-      const a = creakRef.current!;
-      a.volume = 0;
-      await a.play();
-      a.pause();
-      a.currentTime = 0;
-      a.volume = 1;
-    } catch {}
+    startClosingSlow(openedDoor);
+    setOpenedDoor(null);
+    setOpeningDoor(null);
+    setHoverDoor(null);
 
-    try {
-      const h = hbARef.current!;
-      h.volume = 0;
-      await h.play();
-      await new Promise((r) => setTimeout(r, 80));
-      h.pause();
-      h.currentTime = 0;
-      h.volume = 1;
-    } catch {}
+    const ns = rand(DOOR_COUNT);
+    setSafeDoor(ns);
+    startNewRoundTimer(1, ns);
 
-    window.setTimeout(() => playHeartbeat(0.62), 180);
-    startHeartbeatLoop(1200);
+    setScreen("GAME");
   };
 
+  // init
+  useEffect(() => {
+    const ns = rand(DOOR_COUNT);
+    setSafeDoor(ns);
+    startNewRoundTimer(1, ns);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!audioReady) return;
+    if (phase === "PLAYING" && screen === "GAME") startHeartbeatLoop();
+    else stopHeartbeatLoop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioReady, phase, screen]);
+
+  // ---------- mechanics ----------
+  const applyDamage = (damage: number, isCritical: boolean) => {
+    if (ward > 0) {
+      setWard(0);
+      setStreak(0);
+      triggerPulse(isCritical ? 320 : 220);
+
+      window.setTimeout(() => {
+        startClosingSlow(openedDoor);
+        setOpenedDoor(null);
+        setOpeningDoor(null);
+        setHoverDoor(null);
+
+        const ns = rand(DOOR_COUNT);
+        setSafeDoor(ns);
+        startNewRoundTimer(levelRef.current, ns);
+      }, 680);
+
+      return;
+    }
+
+    const extraLose = isCritical && Math.random() < 0.22 ? 1 : 0;
+    const totalLose = damage + extraLose;
+
+    setLives((prev) => {
+      const next = Math.max(0, prev - totalLose);
+      if (next <= 0) {
+        window.setTimeout(() => setPhase("OUT"), 260);
+      } else {
+        window.setTimeout(() => {
+          startClosingSlow(openedDoor);
+          setOpenedDoor(null);
+          setOpeningDoor(null);
+          setHoverDoor(null);
+
+          const ns = rand(DOOR_COUNT);
+          setSafeDoor(ns);
+          startNewRoundTimer(levelRef.current, ns);
+
+          ensureSaveEnabled();
+        }, isCritical ? 1080 : 900);
+      }
+      return next;
+    });
+  };
+
+  // ---------- listen/mark helpers ----------
+  const clearHoldTimers = () => {
+    if (holdListenRef.current) window.clearTimeout(holdListenRef.current);
+    if (holdMarkRef.current) window.clearTimeout(holdMarkRef.current);
+    holdListenRef.current = null;
+    holdMarkRef.current = null;
+  };
+
+  const showListenText = (msg: string) => {
+    setListenText(msg);
+    if (listenTimerRef.current) window.clearTimeout(listenTimerRef.current);
+    listenTimerRef.current = window.setTimeout(() => setListenText(null), 1000);
+  };
+
+  const computeListenHint = (doorIndex: number) => {
+    const isSafe = doorIndex === safeDoor;
+    const isCursed = cursedDoor === doorIndex;
+
+    // %55 doğru, %45 yalan. (rahatsız edici “güven olmaz” hissi)
+    const truthy = Math.random() < (isSafe ? 0.55 : 0.45);
+
+    const goodTR = ["İçerisi… fazla sessiz.", "Nefes sesi yok.", "Boşluk hissi."];
+    const badTR = ["Tırnak… sürtünmesi.", "Islak bir hırıltı.", "Ahşap… inliyor."];
+    const cursedTR = ["Bir şey… seni çağırıyor.", "Soğuk bir fısıltı.", "Yakın… çok yakın."];
+
+    const goodEN = ["Too quiet…", "No breathing.", "A hollow stillness."];
+    const badEN = ["Scratching…", "A wet growl.", "Wood… groaning."];
+    const cursedEN = ["Something… calls you.", "A cold whisper.", "Close… too close."];
+
+    const pick = (arr: string[]) => arr[rand(arr.length)];
+
+    const good = lang === "tr" ? goodTR : goodEN;
+    const bad = lang === "tr" ? badTR : badEN;
+    const cursed = lang === "tr" ? cursedTR : cursedEN;
+
+    const poolBad = isCursed ? cursed : bad;
+
+    if (truthy) {
+      if (isSafe) return pick(good);
+      return pick(poolBad);
+    } else {
+      if (isSafe) return pick(poolBad);
+      return pick(good);
+    }
+  };
+
+  const doListen = (doorIndex: number) => {
+    if (phase !== "PLAYING" || screen !== "GAME") return;
+    if (openedDoor !== null || openingDoor !== null) return;
+
+    ensureAudioNoPopupSync();
+
+    // kısa “dinleme” sesi: hem gıcırdama çok düşük, hem uğultu
+    window.setTimeout(() => void playCreak(0.45), 0);
+    window.setTimeout(() => void playListenAmbient(520), 0);
+
+    showListenText(computeListenHint(doorIndex));
+  };
+
+  const toggleMark = (doorIndex: number) => {
+    if (phase !== "PLAYING" || screen !== "GAME") return;
+    if (openedDoor !== null || openingDoor !== null) return;
+
+    setMarks((prev) => {
+      const next = [...prev];
+      next[doorIndex] = !next[doorIndex];
+      return next;
+    });
+
+    suppressClickRef.current = true; // mark yaptıysa click açmasın
+    triggerPulse(140);
+  };
+
+  // ---------- door handlers ----------
   const onDoorEnter = (i: number) => {
-    if (phase !== "PLAYING") return;
+    if (phase !== "PLAYING" || screen !== "GAME") return;
     setHoverDoor(i);
-    playCreak();
+
+    ensureAudioNoPopupSync();
+    window.setTimeout(() => void playCreak(1), 0);
   };
 
   const onDoorLeave = (i: number) => {
     if (hoverDoor === i) setHoverDoor(null);
   };
 
-  const onPickDoor = (i: number) => {
-    if (phase !== "PLAYING") return;
+  const onDoorPointerDown = (i: number, e: React.PointerEvent) => {
+    e.stopPropagation();
+
+    if (phase !== "PLAYING" || screen !== "GAME") return;
     if (openedDoor !== null || openingDoor !== null) return;
+
+    ensureAudioNoPopupSync();
+
+    suppressClickRef.current = false;
+    clearHoldTimers();
+
+    // 0.45sn: dinle
+    holdListenRef.current = window.setTimeout(() => {
+      suppressClickRef.current = true;
+      doListen(i);
+    }, 450);
+
+    // 1.0sn: işaret
+    holdMarkRef.current = window.setTimeout(() => {
+      toggleMark(i);
+    }, 1000);
+  };
+
+  const onDoorPointerUp = (_i: number, e: React.PointerEvent) => {
+    e.stopPropagation();
+    clearHoldTimers();
+  };
+
+  const onPickDoor = (i: number) => {
+    if (phase !== "PLAYING" || screen !== "GAME") return;
+    if (openedDoor !== null || openingDoor !== null) return;
+
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+
+    ensureAudioNoPopupSync();
 
     setOpenedDoor(i);
     setOpeningDoor(i);
 
     window.setTimeout(() => {
       const isSafe = i === safeDoor;
+      const isCursed = cursedDoor === i;
 
       if (isSafe) {
         triggerWin(i);
+
+        setStreak((prev) => {
+          const next = prev + 1;
+          if (next >= 3) {
+            setWard(1);
+            return 0;
+          }
+          return next;
+        });
+
         window.setTimeout(() => {
-          if (level >= MAX_LEVEL) restartFromCheckpoint();
-          else newHandNextLevel();
+          const cur = levelRef.current;
+          if (cur >= MAX_LEVEL) {
+            restartFromCheckpoint();
+            return;
+          }
+
+          const nl = Math.min(cur + 1, MAX_LEVEL);
+          setLevel(nl);
+          setMaxReachedLevel((prev) => Math.max(prev, nl));
+
+          startClosingSlow(i);
+          setOpenedDoor(null);
+          setOpeningDoor(null);
+          setHoverDoor(null);
+
+          const ns = rand(DOOR_COUNT);
+          setSafeDoor(ns);
+          startNewRoundTimer(nl, ns);
+
+          ensureSaveEnabled();
         }, 820);
+
         return;
       }
 
-      playMonster();
-      triggerPulse();
-      triggerScare();
+      setStreak(0);
 
-      setLives((prev) => {
-        const next = Math.max(0, prev - 1);
-        if (next <= 0) {
-          window.setTimeout(() => setPhase("OUT"), 260);
-        } else {
-          window.setTimeout(() => newHandSameLevel(), 900);
-        }
-        return next;
-      });
+      const canCritical = difficulty === "hard" && criticalScare;
+      const critChance = canCritical ? 0.28 : 0;
+      const isCritical = Math.random() < critChance;
+
+      const damage = isCursed ? 2 : 1;
+
+      if (isCritical) {
+        playMonster(1.08);
+        triggerPulse(340);
+        triggerScare(620);
+        triggerCritical();
+      } else {
+        playMonster(1.0);
+        triggerPulse(220);
+        triggerScare(420);
+      }
+
+      applyDamage(damage, isCritical);
     }, 220);
   };
 
-  // ✅ Timer tick (roundId eklendi)
+  // ---------- timer tick ----------
   useEffect(() => {
     clearTimer();
 
-    const shouldRun = phase === "PLAYING" && audioReady && !scare;
+    const shouldRun = phase === "PLAYING" && screen === "GAME" && !scare;
     if (!shouldRun) return;
 
     const step = 100;
@@ -443,14 +1221,40 @@ export default function App() {
           timeoutLockRef.current = true;
 
           clearTimer();
-          triggerPulse();
+          triggerPulse(240);
+
+          if (ward > 0) {
+            setWard(0);
+            window.setTimeout(() => {
+              startClosingSlow(openedDoor);
+              setOpenedDoor(null);
+              setOpeningDoor(null);
+              setHoverDoor(null);
+
+              const ns = rand(DOOR_COUNT);
+              setSafeDoor(ns);
+              startNewRoundTimer(levelRef.current, ns);
+            }, 650);
+            return 0;
+          }
 
           setLives((lprev) => {
             const lnext = Math.max(0, lprev - 1);
             if (lnext <= 0) {
               window.setTimeout(() => setPhase("OUT"), 260);
             } else {
-              window.setTimeout(() => newHandSameLevel(), 700);
+              window.setTimeout(() => {
+                startClosingSlow(openedDoor);
+                setOpenedDoor(null);
+                setOpeningDoor(null);
+                setHoverDoor(null);
+
+                const ns = rand(DOOR_COUNT);
+                setSafeDoor(ns);
+                startNewRoundTimer(levelRef.current, ns);
+
+                ensureSaveEnabled();
+              }, 700);
             }
             return lnext;
           });
@@ -463,24 +1267,63 @@ export default function App() {
     }, step);
 
     return clearTimer;
-  }, [phase, audioReady, scare, level, roundId]);
-
-  useEffect(() => {
-    startNewRoundTimer(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, screen, scare, roundId, difficulty, ward]);
+
+  // cleanup
+  useEffect(() => {
+    return () => {
+      clearTimer();
+      stopHeartbeatLoop();
+      clearHoldTimers();
+
+      if (listenTimerRef.current) window.clearTimeout(listenTimerRef.current);
+      if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
+      if (scareTimer.current) window.clearTimeout(scareTimer.current);
+      if (winTimer.current) window.clearTimeout(winTimer.current);
+      if (closingTimer.current) window.clearTimeout(closingTimer.current);
+      if (criticalTimer.current) window.clearTimeout(criticalTimer.current);
+
+      try {
+        monsterRef.current?.pause();
+        hbARef.current?.pause();
+        hbBRef.current?.pause();
+      } catch {}
+
+      try {
+        ambientCtxRef.current?.close();
+      } catch {}
+    };
   }, []);
 
-  useEffect(() => {
-    if (!audioReady) return;
-    if (phase === "PLAYING") startHeartbeatLoop();
-    else stopHeartbeatLoop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioReady, phase]);
+  // ---------- UI helpers ----------
+  const total = roundTotalMsRef.current || 1;
+  const ratio = clamp(timeLeftMs / total, 0, 1);
+  const beatMs = beatMsRef.current;
+
+  const goNewGame = () => {
+    ensureAudioNoPopupSync();
+    clearSave();
+    restartFromLevel1();
+  };
+
+  const goContinue = () => {
+    ensureAudioNoPopupSync();
+    if (!hasSave) return;
+    const ns = rand(DOOR_COUNT);
+    setSafeDoor(ns);
+    startNewRoundTimer(levelRef.current, ns);
+    setOpenedDoor(null);
+    setOpeningDoor(null);
+    setHoverDoor(null);
+    setScreen("GAME");
+  };
 
   const onWatchAdGainLives = async () => {
     if (adLoading) return;
-    setAdLoading(true);
+    ensureAudioNoPopupSync();
 
+    setAdLoading(true);
     await new Promise((r) => setTimeout(r, 1200));
     setAdLoading(false);
 
@@ -492,34 +1335,74 @@ export default function App() {
     setOpeningDoor(null);
     setHoverDoor(null);
 
-    // aynı level / aynı elde: safeDoor değişmez
-    startNewRoundTimer(level);
+    const ns = rand(DOOR_COUNT);
+    setSafeDoor(ns);
+    startNewRoundTimer(levelRef.current, ns);
+
+    setScreen("GAME");
+    ensureSaveEnabled();
   };
 
-  useEffect(() => {
-    return () => {
-      clearTimer();
-      stopHeartbeatLoop();
-      if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
-      if (scareTimer.current) window.clearTimeout(scareTimer.current);
-      if (winTimer.current) window.clearTimeout(winTimer.current);
-      if (closingTimer.current) window.clearTimeout(closingTimer.current);
-      try {
-        creakRef.current?.pause();
-        monsterRef.current?.pause();
-        hbARef.current?.pause();
-        hbBRef.current?.pause();
-      } catch {}
-    };
-  }, []);
+  // settings test buttons
+  const testDoor = () => {
+    ensureAudioNoPopupSync();
+    window.setTimeout(() => void playCreak(1), 0);
+  };
+  const testMonster = () => {
+    ensureAudioNoPopupSync();
+    window.setTimeout(() => playMonster(1), 0);
+  };
+  const testHeart = () => {
+    ensureAudioNoPopupSync();
+    window.setTimeout(() => playHeartbeat(), 0);
+  };
 
-  const total = roundTotalMsRef.current || 1;
-  const ratio = clamp(timeLeftMs / total, 0, 1);
-  const beatMs = beatMsRef.current;
+  // ---------- corridor drag ----------
+  const onCorridorPointerDown = (e: React.PointerEvent) => {
+    if (screen !== "GAME" || phase !== "PLAYING") return;
 
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.(".doorBtn")) return;
+
+    dragRef.current.dragging = true;
+    dragRef.current.startX = e.clientX;
+    dragRef.current.startYaw = yawRef.current;
+    dragRef.current.pointerId = e.pointerId;
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const onCorridorPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current.dragging) return;
+    if (dragRef.current.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - dragRef.current.startX;
+    const nextYaw = clamp(dragRef.current.startYaw + dx / 280, -0.95, 0.95);
+    setYaw(nextYaw);
+  };
+
+  const onCorridorPointerUp = (e: React.PointerEvent) => {
+    if (!dragRef.current.dragging) return;
+    if (dragRef.current.pointerId !== e.pointerId) return;
+
+    dragRef.current.dragging = false;
+    dragRef.current.pointerId = null;
+
+    setYaw((y) => clamp(y * 0.84, -0.95, 0.95));
+  };
+
+  const langList = ["tr", "en", "de", "ru", "fr"] as Lang[];
+  const diffList = ["easy", "normal", "hard"] as Difficulty[];
+
+  // ---------- render ----------
   return (
     <div
-      className={`app ${pulse ? "pulse" : ""} ${scare ? "scare" : ""} ${winFlash ? "win" : ""}`}
+      className={`app ${pulse ? "pulse" : ""} ${scare ? "scare" : ""} ${winFlash ? "win" : ""} ${
+        critical ? "critical" : ""
+      }`}
+      onPointerDown={() => ensureAudioNoPopupSync()}
       style={
         {
           ["--beat" as any]: `${beatMs}ms`,
@@ -532,51 +1415,76 @@ export default function App() {
         :root{ --bg:#07070c; --text:#f0f0f5; --gold:#b08d24; --goldGlow: rgba(176,141,36,.45); }
         *{box-sizing:border-box}
         body{margin:0;background:var(--bg);color:var(--text);font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
-
         .app{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;position:relative;overflow:hidden;}
         .wrap{width:min(980px, 100%); position:relative; z-index:2;}
 
-        .app.win .wrap{animation:winshake 420ms ease-out;}
-        @keyframes winshake{
-          0%{transform:translate(0,0)}
-          15%{transform:translate(-6px,3px)}
-          30%{transform:translate(7px,-4px)}
-          45%{transform:translate(-5px,-2px)}
-          60%{transform:translate(4px,2px)}
-          100%{transform:translate(0,0)}
-        }
-        .app.win::before{
+        .app.critical::before{
           content:"";
-          position:fixed; inset:-40px;
-          background:radial-gradient(650px 420px at 50% 45%, rgba(176,141,36,.22), rgba(0,0,0,0) 65%);
-          opacity:.95;
+          position:fixed; inset:-30px;
+          background:
+            radial-gradient(650px 420px at 50% 45%, rgba(255,0,0,.08), rgba(0,0,0,0) 62%),
+            radial-gradient(900px 520px at 50% 55%, rgba(0,0,0,.35), rgba(0,0,0,.88));
+          opacity:.0;
+          z-index:92;
           pointer-events:none;
-          z-index:60;
-          animation:flashfade 700ms ease-out forwards;
+          animation:critflash 520ms ease-out forwards;
         }
-        @keyframes flashfade{0%{opacity:.95}100%{opacity:0}}
+        @keyframes critflash{0%{opacity:0; filter:blur(0px)}18%{opacity:1; filter:blur(1.2px)}55%{opacity:.55; filter:blur(.6px)}100%{opacity:0; filter:blur(0px)}}
+
+        .centerCard{width:min(680px, 100%);border-radius:22px;border:1px solid rgba(255,255,255,.10);background:rgba(10,10,16,.92);
+          box-shadow:0 30px 140px rgba(0,0,0,.70);padding:22px;backdrop-filter: blur(12px);}
+        .brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0 2px;}
+        .brandTitle{font-family:"Rubik Wet Paint",system-ui;font-size:min(56px, 10vw);letter-spacing:2px;color:var(--gold);
+          text-shadow:0 0 18px rgba(176,141,36,.35), 0 18px 90px rgba(0,0,0,.9);margin:0;line-height:0.95;text-align:center;}
+        .brandSub{font-family:"UnifrakturCook",system-ui;opacity:.85;letter-spacing:1px;margin:0;text-align:center;}
+        .menuBtns{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+        .btn{width:100%;border:none;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(176,141,36,.92);color:#0b0b10;}
+        .btnGhost{width:100%;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.92);}
+        .btnDisabled{opacity:.45;cursor:not-allowed;}
+
+        .block{margin-top:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);}
+        .blockTitle{font-family:"Creepster",system-ui;letter-spacing:1px;opacity:.9;margin:0 0 10px;text-align:center;}
+        .langRow,.diffRow,.critRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+        .langBtn,.diffBtn,.critBtn{min-width:72px;border-radius:14px;padding:10px 14px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.28);
+          color:rgba(255,255,255,.92);font-weight:900;letter-spacing:.6px;cursor:pointer;}
+        .diffBtn,.critBtn{min-width:140px;}
+        .langBtn.active,.diffBtn.active,.critBtn.active{background:rgba(176,141,36,.92);color:#0b0b10;border-color:rgba(176,141,36,.92);box-shadow:0 0 18px rgba(176,141,36,.35);}
+
+        .sliderRow{display:grid;grid-template-columns:110px 1fr 64px 70px;gap:10px;align-items:center;margin-top:10px;}
+        .sliderLabel{opacity:.9;font-weight:900;}
+        input[type="range"]{width:100%}
+        .pct{opacity:.85;text-align:right;font-weight:900;}
+        .testBtn{border-radius:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:rgba(255,255,255,.92);font-weight:900;cursor:pointer;}
 
         .hud{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
         .title{margin:0;font-family:"Rubik Wet Paint",system-ui;font-size:34px;letter-spacing:.5px;line-height:1;opacity:.95;text-shadow:0 10px 40px rgba(0,0,0,.45);}
         .sub{margin:6px 0 0;color:rgba(255,255,255,.82);font-size:13px;font-family:"UnifrakturCook",system-ui;letter-spacing:.6px;opacity:.92;}
         .hudRight{display:flex;gap:10px;align-items:center;font-size:13px;flex-wrap:wrap;justify-content:flex-end;}
-        .pill{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(6px);color:rgba(255,255,255,.9);font-family:"Creepster",system-ui;letter-spacing:.8px;}
+        .pill{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(6px);
+          color:rgba(255,255,255,.9);font-family:"Creepster",system-ui;letter-spacing:.8px;}
         .pill b{font-family:ui-sans-serif,system-ui;letter-spacing:0;}
+
+        .logoBtn{border:none;background:transparent;padding:0;cursor:pointer;text-align:left;}
+        .logoSmall{display:flex;flex-direction:column;}
+        .logoSmall .logoMark{font-family:"Rubik Wet Paint",system-ui;font-size:18px;letter-spacing:1px;color:var(--gold);
+          text-shadow:0 0 14px rgba(176,141,36,.35), 0 18px 60px rgba(0,0,0,.7);}
+        .logoSmall .logoSub{margin-top:2px;font-family:"UnifrakturCook",system-ui;font-size:12px;letter-spacing:.7px;opacity:.8;}
 
         .pulseWrap{margin:6px 0 14px;display:flex;gap:10px;align-items:center;}
         .pulseLabel{font-family:"Creepster",system-ui;letter-spacing:.9px;color:rgba(255,255,255,.78);font-size:14px;opacity:.95;transform:translateY(1px);user-select:none;}
         .ecgBar{flex:1;height:18px;border-radius:999px;background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
-          border:1px solid rgba(255,255,255,.12);overflow:hidden;position:relative;box-shadow:0 10px 40px rgba(0,0,0,.35);
-        }
+          border:1px solid rgba(255,255,255,.12);overflow:hidden;position:relative;box-shadow:0 10px 40px rgba(0,0,0,.35);}
         .ecgDim{position:absolute;top:0;right:0;bottom:0;width:calc((1 - var(--t)) * 100%);background:rgba(0,0,0,.52);pointer-events:none;}
         .ecgViewport{position:absolute;inset:0;overflow:hidden;}
         .ecgMove{position:absolute;inset:0;width:200%;display:flex;animation:scroll var(--beat) linear infinite;opacity:1;filter:drop-shadow(0 0 10px var(--goldGlow));}
         .ecgSvg{width:50%;height:100%;}
         @keyframes scroll{0%{transform:translateX(0%)}100%{transform:translateX(-50%)}}
 
-        .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
-        @media (max-width: 860px){ .grid{grid-template-columns: repeat(3, 1fr)} }
-        @media (max-width: 520px){ .grid{grid-template-columns: repeat(2, 1fr)} }
+        /* corridor */
+        .corridor{position:relative; width:100%; padding:10px 0 0; user-select:none; touch-action:pan-y;}
+        .track{display:grid; grid-template-columns:repeat(5, 1fr); gap:14px; transform: translateX(calc(var(--yaw) * -90px)); transition: transform 90ms ease-out;}
+        @media (max-width: 860px){ .track{grid-template-columns: repeat(3, 1fr)} }
+        @media (max-width: 520px){ .track{grid-template-columns: repeat(2, 1fr)} }
 
         .doorBtn{border:none;background:transparent;padding:0;cursor:pointer;}
         .doorBtn:disabled{cursor:not-allowed;opacity:.65;}
@@ -584,16 +1492,10 @@ export default function App() {
         .doorStage{position:relative;width:100%;height:196px;border-radius:16px;overflow:hidden;box-shadow:0 18px 70px rgba(0,0,0,.45);background:rgba(0,0,0,.25);}
         .inside{position:absolute;inset:0;background:radial-gradient(260px 180px at 50% 45%, rgba(0,0,0,.05), rgba(0,0,0,.94) 74%);}
         .frame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;filter:contrast(1.02) brightness(.92);}
-
         .leaf{position:absolute;inset:0;width:100%;object-fit:cover;pointer-events:none;transform-origin:22% 38%;
-          transform:perspective(900px) rotateY(0deg);
-          transition:transform 520ms ease;
-          filter:contrast(1.06) brightness(.98);
-          top:-2px;height:calc(100% + 4px);
-        }
+          transform:perspective(900px) rotateY(0deg);transition:transform 520ms ease;filter:contrast(1.06) brightness(.98);top:-2px;height:calc(100% + 4px);}
         .ajarHover{transform:perspective(900px) rotateY(-16deg);}
         .ajarFull{transform:perspective(900px) rotateY(-78deg);}
-
         .closingSlow{transition-duration: 980ms !important; transition-timing-function: ease-out !important;}
         .winGlow{filter: drop-shadow(0 0 18px rgba(176,141,36,.55)) drop-shadow(0 0 40px rgba(176,141,36,.25));}
 
@@ -604,8 +1506,7 @@ export default function App() {
         .scareOverlay{position:fixed;inset:0;z-index:90;pointer-events:none;opacity:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.72);}
         .app.scare .scareOverlay{opacity:1;}
         .scareImg{width:min(720px, 92vw);height:min(520px, 72vh);object-fit:cover;border-radius:18px;filter:contrast(1.15) brightness(.85);
-          transform:scale(.65);animation:zoompop 420ms ease-out forwards;box-shadow:0 40px 160px rgba(0,0,0,.70);
-        }
+          transform:scale(.65);animation:zoompop 420ms ease-out forwards;box-shadow:0 40px 160px rgba(0,0,0,.70);}
         @keyframes zoompop{0%{transform:scale(.60)}70%{transform:scale(1.12)}100%{transform:scale(1.02)}}
 
         .pulse::after{content:"";position:fixed;inset:-20px;background:rgba(0,0,0,.65);animation:pulsefx .22s ease-out forwards;z-index:70;pointer-events:none;}
@@ -613,167 +1514,382 @@ export default function App() {
 
         .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(0,0,0,.72);z-index:80;}
         .modal{width:min(520px, 100%);background:rgba(10,10,16,.92);border:1px solid rgba(255,255,255,.10);border-radius:22px;padding:18px;
-          box-shadow:0 30px 140px rgba(0,0,0,.70);backdrop-filter:blur(12px);
-        }
+          box-shadow:0 30px 140px rgba(0,0,0,.70);backdrop-filter:blur(12px);}
         .modalTitle{margin:0;font-family:"Creepster",system-ui;font-size:26px;letter-spacing:1px;}
         .modalInfo{margin:10px 0 14px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.45;}
-        .btn{width:100%;border:none;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(176,141,36,.92);color:#0b0b10;}
-        .btnGhost{width:100%;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.92);}
         .btnRow{display:flex;flex-direction:column;gap:10px;}
 
-        .winToast{
-          position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
-          pointer-events:none; z-index:85;
-          background: radial-gradient(700px 380px at 50% 45%, rgba(0,0,0,.10), rgba(0,0,0,.62));
-          opacity:0; transform:scale(.98);
-          transition:opacity 160ms ease, transform 160ms ease;
-        }
+        .winToast{position:fixed; inset:0; display:flex; align-items:center; justify-content:center;pointer-events:none; z-index:85;
+          background: radial-gradient(700px 380px at 50% 45%, rgba(0,0,0,.10), rgba(0,0,0,.62));opacity:0; transform:scale(.98);
+          transition:opacity 160ms ease, transform 160ms ease;}
         .winToast.show{opacity:1; transform:scale(1);}
-        .winText{
-          font-family:"Creepster", system-ui;
-          font-size:min(82px, 12vw);
-          letter-spacing:2px;
-          color:var(--gold);
-          text-shadow: 0 0 18px rgba(176,141,36,.55), 0 20px 80px rgba(0,0,0,.75);
+        .winText{font-family:"Creepster", system-ui;font-size:min(82px, 12vw);letter-spacing:2px;color:var(--gold);
+          text-shadow: 0 0 18px rgba(176,141,36,.55), 0 20px 80px rgba(0,0,0,.75);text-align:center;line-height:0.95;}
+
+        .creditsList{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
+        .creditItem{padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);}
+        .creditRole{font-family:"Creepster",system-ui;letter-spacing:.8px;opacity:.9;}
+        .creditName{margin-top:4px;font-weight:900;letter-spacing:.2px;}
+
+        .listenToast{
+          position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+          z-index:95; pointer-events:none;
+          padding:10px 12px; border-radius:14px;
+          background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.14);
+          backdrop-filter: blur(8px);
+          font-family:"UnifrakturCook",system-ui;
+          letter-spacing:.8px; color: rgba(255,255,255,.92);
+          box-shadow:0 18px 70px rgba(0,0,0,.55);
+          max-width:min(720px, 92vw);
           text-align:center;
-          line-height:0.95;
         }
-        .winSmall{
-          display:block;
-          margin-top:10px;
-          font-family:"UnifrakturCook", system-ui;
-          font-size:min(28px, 5vw);
-          letter-spacing:1.5px;
-          color:rgba(255,255,255,.85);
-          text-shadow:0 14px 60px rgba(0,0,0,.75);
+        .markBadge{
+          position:absolute; right:10px; top:10px; z-index:7;
+          padding:6px 8px; border-radius:999px;
+          background:rgba(176,141,36,.18);
+          border:1px solid rgba(176,141,36,.45);
+          font-weight:900; font-size:11px; letter-spacing:.6px;
         }
       `}</style>
 
-      <div className="wrap">
-        <div className="hud">
-          <div>
-            <h1 className="title">Seviye {level}</h1>
-            <p className="sub">{!audioReady ? "Sesleri aç." : "Güvenli kapıyı bul."}</p>
+      {/* MENU */}
+      {screen === "MENU" && (
+        <div className="centerCard">
+          <div className="brand">
+            <h1 className="brandTitle">KAPI</h1>
+            <p className="brandSub">{t("menuHint")}</p>
           </div>
 
-          <div className="hudRight">
-            <span className="pill">Hak: <b>{lives}/{MAX_LIVES}</b></span>
-            <span className="pill">Checkpoint: <b>{CHECKPOINT_LEVEL}</b></span>
-            <span className="pill">Başlangıç: <b>{maxReachedLevel >= CHECKPOINT_LEVEL ? CHECKPOINT_LEVEL : 1}</b></span>
+          <div className="menuBtns">
+            <button className="btn" onClick={goNewGame}>
+              {t("newGame")}
+            </button>
 
+            <button
+              className={`btnGhost ${!hasSave ? "btnDisabled" : ""}`}
+              onClick={goContinue}
+              disabled={!hasSave}
+              title={!hasSave ? t("continueDisabled") : ""}
+            >
+              {t("continue")}
+            </button>
+
+            <button className="btnGhost" onClick={() => setScreen("SETTINGS")}>
+              {t("settings")}
+            </button>
           </div>
         </div>
+      )}
 
-        {phase === "PLAYING" && audioReady && (
-          <div className="pulseWrap" aria-label="timer">
-            <div className="pulseLabel">Nabız</div>
-            <div className="ecgBar">
-              <div className="ecgViewport">
-                <div className="ecgMove">
-                  <svg className="ecgSvg" viewBox="0 0 200 40" preserveAspectRatio="none">
-                    <path
-                      d="M0 22 L18 22 L24 22 L30 8 L36 36 L42 22 L70 22 L78 22 L86 12 L92 30 L98 22 L126 22 L140 22 L148 6 L156 36 L164 22 L200 22"
-                      fill="none"
-                      stroke="var(--gold)"
-                      strokeWidth="3.2"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <svg className="ecgSvg" viewBox="0 0 200 40" preserveAspectRatio="none">
-                    <path
-                      d="M0 22 L18 22 L24 22 L30 8 L36 36 L42 22 L70 22 L78 22 L86 12 L92 30 L98 22 L126 22 L140 22 L148 6 L156 36 L164 22 L200 22"
-                      fill="none"
-                      stroke="var(--gold)"
-                      strokeWidth="3.2"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </div>
-              </div>
-              <div className="ecgDim" />
+      {/* SETTINGS */}
+      {screen === "SETTINGS" && (
+        <div className="centerCard">
+          <div className="blockTitle" style={{ marginTop: 6 }}>
+            {t("settingsTitle")}
+          </div>
+
+          <div className="block">
+            <div className="blockTitle">{t("langTitle")}</div>
+            <div className="langRow">
+              {langList.map((l) => (
+                <button
+                  key={l}
+                  className={`langBtn ${lang === l ? "active" : ""}`}
+                  onClick={() => setLang(l)}
+                  type="button"
+                >
+                  {langLabel[l]}
+                </button>
+              ))}
             </div>
           </div>
-        )}
 
-        <div className="grid">
-          {Array.from({ length: DOOR_COUNT }).map((_, i) => {
-            const disabled = phase !== "PLAYING";
-            const isHover = hoverDoor === i && openedDoor === null && openingDoor === null;
-            const isFullOpen = openedDoor === i || openingDoor === i;
-            const leafClass = isFullOpen ? "ajarFull" : isHover ? "ajarHover" : "";
-            const slowClose = closingDoor === i && !isFullOpen;
-            const glow = winFlash && winDoor === i;
+          <div className="block">
+            <div className="blockTitle">{t("difficultyTitle")}</div>
+            <div className="diffRow">
+              {diffList.map((d) => (
+                <button
+                  key={d}
+                  className={`diffBtn ${difficulty === d ? "active" : ""}`}
+                  onClick={() => setDifficulty(d)}
+                  type="button"
+                >
+                  {t(d === "easy" ? "difficulty_easy" : d === "hard" ? "difficulty_hard" : "difficulty_normal")}
+                </button>
+              ))}
+            </div>
+          </div>
 
-            return (
-              <button
-                key={i}
-                className="doorBtn"
-                disabled={disabled}
-                onMouseEnter={() => onDoorEnter(i)}
-                onMouseLeave={() => onDoorLeave(i)}
-                onClick={() => onPickDoor(i)}
-                title="Kapıyı seç"
-              >
-                <div className="doorStage">
-                  <div className="inside" />
-                  <div className={`monsterInside ${scare && openedDoor === i ? "monsterShow" : ""}`}>
-                    <img src={assets.monsterImg} alt="Monster" />
-                  </div>
+          <div className="block">
+            <div className="blockTitle">{t("criticalTitle")}</div>
+            <div className="critRow">
+              <button className={`critBtn ${criticalScare ? "active" : ""}`} onClick={() => setCriticalScare(true)}>
+                {t("criticalOn")}
+              </button>
+              <button className={`critBtn ${!criticalScare ? "active" : ""}`} onClick={() => setCriticalScare(false)}>
+                {t("criticalOff")}
+              </button>
+            </div>
+          </div>
 
-                  <img className="frame" src={assets.doorFrame} alt="Door frame" />
-                  <img
-                    className={`leaf ${leafClass} ${slowClose ? "closingSlow" : ""} ${glow ? "winGlow" : ""}`}
-                    src={assets.doorLeaf}
-                    alt="Door leaf"
-                  />
+          <div className="block">
+            <div className="blockTitle">{t("audioTitle")}</div>
+
+            <div className="sliderRow">
+              <div className="sliderLabel">{t("master")}</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(vol.master * 100)}
+                onChange={(e) => setVol((p) => ({ ...p, master: clamp01(Number(e.target.value) / 100) }))}
+              />
+              <div className="pct">{Math.round(vol.master * 100)}%</div>
+              <button className="testBtn" onClick={testHeart} type="button">
+                {t("test")}
+              </button>
+            </div>
+
+            <div className="sliderRow">
+              <div className="sliderLabel">{t("sfxDoor")}</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(vol.door * 100)}
+                onChange={(e) => setVol((p) => ({ ...p, door: clamp01(Number(e.target.value) / 100) }))}
+              />
+              <div className="pct">{Math.round(vol.door * 100)}%</div>
+              <button className="testBtn" onClick={testDoor} type="button">
+                {t("test")}
+              </button>
+            </div>
+
+            <div className="sliderRow">
+              <div className="sliderLabel">{t("sfxMonster")}</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(vol.monster * 100)}
+                onChange={(e) => setVol((p) => ({ ...p, monster: clamp01(Number(e.target.value) / 100) }))}
+              />
+              <div className="pct">{Math.round(vol.monster * 100)}%</div>
+              <button className="testBtn" onClick={testMonster} type="button">
+                {t("test")}
+              </button>
+            </div>
+
+            <div className="sliderRow">
+              <div className="sliderLabel">{t("sfxHeartbeat")}</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(vol.heartbeat * 100)}
+                onChange={(e) => setVol((p) => ({ ...p, heartbeat: clamp01(Number(e.target.value) / 100) }))}
+              />
+              <div className="pct">{Math.round(vol.heartbeat * 100)}%</div>
+              <button className="testBtn" onClick={testHeart} type="button">
+                {t("test")}
+              </button>
+            </div>
+          </div>
+
+          <div className="menuBtns" style={{ marginTop: 14 }}>
+            <button className="btnGhost" onClick={() => setScreen("CREDITS")}>
+              {t("credits")}
+            </button>
+            <button className="btnGhost" onClick={() => setScreen("MENU")}>
+              {t("back")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CREDITS */}
+      {screen === "CREDITS" && (
+        <div className="centerCard">
+          <div className="blockTitle" style={{ marginTop: 6 }}>
+            {t("creditsTitle")}
+          </div>
+
+          <div className="creditsList">
+            <div className="creditItem">
+              <div className="creditRole">{t("developer")}</div>
+              <div className="creditName">İhtiyar Oyuncu</div>
+            </div>
+
+            <div className="creditItem">
+              <div className="creditRole">{t("story")}</div>
+              <div className="creditName">Burak Kahraman</div>
+            </div>
+          </div>
+
+          <div className="menuBtns" style={{ marginTop: 14 }}>
+            <button className="btnGhost" onClick={() => setScreen("SETTINGS")}>
+              {t("back")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* GAME */}
+      {screen === "GAME" && (
+        <div className="wrap">
+          <div className="hud">
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <button className="logoBtn" onClick={() => setScreen("MENU")} title="Menü">
+                <div className="logoSmall">
+                  <div className="logoMark">KAPI</div>
+                  <div className="logoSub">{t("menuButton")}</div>
                 </div>
               </button>
-            );
-          })}
-        </div>
-      </div>
 
-      <div className={`winToast ${winFlash ? "show" : ""}`}>
-        <div className="winText">
-          YIRTTIN
-          <span className="winSmall">(ŞİMDİLİK)</span>
-        </div>
-      </div>
+              <div>
+                <h1 className="title">{t("levelTitle", { level })}</h1>
+                <p className="sub">{!audioReady ? t("subtitleNeedAudio") : t("subtitleFindDoor")}</p>
+                <p className="sub" style={{ marginTop: 6, opacity: 0.82 }}>
+                  {t("listenHint")}
+                </p>
+              </div>
+            </div>
 
-      {!audioReady && phase === "PLAYING" && (
-        <div className="overlay" style={{ background: "rgba(0,0,0,.55)" }}>
-          <div className="modal">
-            <h2 className="modalTitle">Ses Kilidi</h2>
-            <p className="modalInfo">Tarayıcı sesleri kullanıcı etkileşimi olmadan açmıyor. Bir kere “Sesi Aç” bas.</p>
-            <div className="btnRow">
-              <button className="btn" onClick={() => void unlockAudio()}>Sesi Aç</button>
+            <div className="hudRight">
+              <span className="pill">
+                {t("hudLives")}: <b>{lives}/{MAX_LIVES}</b>
+              </span>
+              <span className="pill">
+                {t("hudWard")}: <b>{ward}</b>
+              </span>
+              <span className="pill">
+                {t("hudCheckpoint")}: <b>{CHECKPOINT_LEVEL}</b>
+              </span>
+              <span className="pill">
+                {t("hudLevel")}: <b>{level}</b>
+              </span>
+            </div>
+          </div>
+
+          {phase === "PLAYING" && audioReady && (
+            <div className="pulseWrap" aria-label="timer">
+              <div className="pulseLabel">{t("pulseLabel")}</div>
+              <div className="ecgBar">
+                <div className="ecgViewport">
+                  <div className="ecgMove">
+                    <svg className="ecgSvg" viewBox="0 0 200 40" preserveAspectRatio="none">
+                      <path
+                        d="M0 22 L18 22 L24 22 L30 8 L36 36 L42 22 L70 22 L78 22 L86 12 L92 30 L98 22 L126 22 L140 22 L148 6 L156 36 L164 22 L200 22"
+                        fill="none"
+                        stroke="var(--gold)"
+                        strokeWidth="3.2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <svg className="ecgSvg" viewBox="0 0 200 40" preserveAspectRatio="none">
+                      <path
+                        d="M0 22 L18 22 L24 22 L30 8 L36 36 L42 22 L70 22 L78 22 L86 12 L92 30 L98 22 L126 22 L140 22 L148 6 L156 36 L164 22 L200 22"
+                        fill="none"
+                        stroke="var(--gold)"
+                        strokeWidth="3.2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ecgDim" />
+              </div>
+            </div>
+          )}
+
+          <div
+            className="corridor"
+            onPointerDown={onCorridorPointerDown}
+            onPointerMove={onCorridorPointerMove}
+            onPointerUp={onCorridorPointerUp}
+            style={{ ["--yaw" as any]: yaw }}
+          >
+            <div className="track">
+              {Array.from({ length: DOOR_COUNT }).map((_, i) => {
+                const disabled = phase !== "PLAYING";
+                const isHover = hoverDoor === i && openedDoor === null && openingDoor === null;
+                const isFullOpen = openedDoor === i || openingDoor === i;
+                const leafClass = isFullOpen ? "ajarFull" : isHover ? "ajarHover" : "";
+                const slowClose = closingDoor === i && !isFullOpen;
+                const glow = winFlash && winDoor === i;
+
+                const markOn = marks[i];
+
+                return (
+                  <button
+                    key={i}
+                    className="doorBtn"
+                    disabled={disabled}
+                    onMouseEnter={() => onDoorEnter(i)}
+                    onMouseLeave={() => onDoorLeave(i)}
+                    onPointerDown={(e) => onDoorPointerDown(i, e)}
+                    onPointerUp={(e) => onDoorPointerUp(i, e)}
+                    onPointerCancel={(e) => onDoorPointerUp(i, e)}
+                    onClick={() => onPickDoor(i)}
+                    title="Kapıyı seç"
+                  >
+                    <div className="doorStage">
+                      {markOn && <div className="markBadge">{t("mark")}</div>}
+
+                      <div className="inside" />
+                      <div className={`monsterInside ${scare && openedDoor === i ? "monsterShow" : ""}`}>
+                        <img src={assets.monsterImg} alt="Monster" />
+                      </div>
+
+                      <img className="frame" src={assets.doorFrame} alt="Door frame" />
+                      <img
+                        className={`leaf ${leafClass} ${slowClose ? "closingSlow" : ""} ${glow ? "winGlow" : ""}`}
+                        src={assets.doorLeaf}
+                        alt="Door leaf"
+                      />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {phase === "OUT" && (
+      {/* listen toast */}
+      {listenText && <div className="listenToast">{listenText}</div>}
+
+      {/* WIN */}
+      <div className={`winToast ${winFlash ? "show" : ""}`}>
+        <div className="winText">{t("survived")}</div>
+      </div>
+
+      {/* OUT */}
+      {phase === "OUT" && screen === "GAME" && (
         <div className="overlay">
           <div className="modal">
-            <h2 className="modalTitle">Öldün</h2>
-            <p className="modalInfo">
-              Reklam izlersen <b>+2 hak</b> alıp <b>aynı elde</b> devam edersin.  
-              Reklam istemiyorsan <b>checkpoint</b> varsa oradan dönersin.
-            </p>
+            <h2 className="modalTitle">{t("diedTitle")}</h2>
+            <p className="modalInfo">{t("adText")}</p>
             <div className="btnRow">
               <button className="btn" onClick={() => void onWatchAdGainLives()} disabled={adLoading}>
-                {adLoading ? "Reklam yükleniyor..." : "Reklam İzle (+2 Hak)"}
+                {adLoading ? t("adLoading") : t("watchAd")}
               </button>
+
+              <button className="btnGhost" onClick={restartFromLevel1} disabled={adLoading}>
+                {t("startLevel1")}
+              </button>
+
               <button className="btnGhost" onClick={restartFromCheckpoint} disabled={adLoading}>
-                Başa Dön
+                {t("continueCheckpoint")}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* SCARE */}
       <div className="scareOverlay">
         <img className="scareImg" src={assets.monsterImg} alt="Jumpscare" />
       </div>
