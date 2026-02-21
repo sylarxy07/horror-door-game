@@ -171,7 +171,6 @@ const translations: Record<Lang, Dict> = {
     menuButton: "Menü",
 
     continueDisabled: "Kayıt yok",
-    curse: "LANET",
 
     listenHint: "Basılı tut: 0.45sn dinle • 1.0sn işaret",
     mark: "İŞARET",
@@ -225,7 +224,6 @@ const translations: Record<Lang, Dict> = {
     menuButton: "Menu",
 
     continueDisabled: "No save",
-    curse: "CURSE",
 
     listenHint: "Hold: 0.45s listen • 1.0s mark",
     mark: "MARK",
@@ -279,7 +277,6 @@ const translations: Record<Lang, Dict> = {
     menuButton: "Menü",
 
     continueDisabled: "Kein Save",
-    curse: "FLUCH",
 
     listenHint: "Halten: hören/markieren",
     mark: "MARK",
@@ -333,7 +330,6 @@ const translations: Record<Lang, Dict> = {
     menuButton: "Меню",
 
     continueDisabled: "Нет сохранения",
-    curse: "ПРОКЛЯТИЕ",
 
     listenHint: "Удерживай: слушать/пометить",
     mark: "MARK",
@@ -387,7 +383,6 @@ const translations: Record<Lang, Dict> = {
     menuButton: "Menu",
 
     continueDisabled: "Pas de sauvegarde",
-    curse: "MALÉDICTION",
 
     listenHint: "Maintiens : écouter/marquer",
     mark: "MARK",
@@ -459,21 +454,6 @@ export default function App() {
   const [streak, setStreak] = useState(0);
   const [ward, setWard] = useState(0);
 
-  // corridor drag (2D)
-  const [yaw, setYaw] = useState(0); // -1..1
-  const yawRef = useRef(0);
-  useEffect(() => {
-    yawRef.current = yaw;
-  }, [yaw]);
-
-  const dragRef = useRef<{ dragging: boolean; startX: number; startYaw: number; pointerId: number | null }>({
-    dragging: false,
-    startX: 0,
-    startYaw: 0,
-    pointerId: null,
-  });
-
-  // listen/mark
   const [marks, setMarks] = useState<boolean[]>(() => Array.from({ length: DOOR_COUNT }).map(() => false));
   const [listenText, setListenText] = useState<string | null>(null);
   const listenTimerRef = useRef<number | null>(null);
@@ -492,7 +472,6 @@ export default function App() {
 
   const [openedDoor, setOpenedDoor] = useState<number | null>(null);
   const [hoverDoor, setHoverDoor] = useState<number | null>(null);
-  const [openingDoor, setOpeningDoor] = useState<number | null>(null);
 
   const [closingDoor, setClosingDoor] = useState<number | null>(null);
   const closingTimer = useRef<number | null>(null);
@@ -519,11 +498,16 @@ export default function App() {
   const timeoutLockRef = useRef(false);
   const [roundId, setRoundId] = useState(0);
 
+  // NEW ASSETS (GitHub public/images/*)
   const assets = useMemo(
     () => ({
-      doorFrame: "/door_frame.png",
-      doorLeaf: "/door_leaf.png",
-      monsterImg: "/monster.png",
+      doorImgs: [
+        "/images/doors/door_wood_01.png",
+        "/images/doors/door_wood_chain_02.png",
+        "/images/doors/door_wood_broken_03.png",
+        "/images/doors/door_wood_plate_blank_04.png",
+        "/images/doors/door_wood_cursed_05.png",
+      ],
       creak: "/door.mp3",
       monster: "/monster.mp3",
     }),
@@ -726,7 +710,6 @@ export default function App() {
     } catch {}
   };
 
-  // kısa “uğultu / rüzgar” (dosyasız)
   const playListenAmbient = async (ms = 520) => {
     if (!audioReadyRef.current) return;
     await ensureAmbientCtx();
@@ -740,11 +723,10 @@ export default function App() {
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
 
-    // “wind/noise”
     let last = 0;
     for (let i = 0; i < bufferSize; i++) {
       const white = Math.random() * 2 - 1;
-      last = last * 0.92 + white * 0.08; // biraz yumuşatma
+      last = last * 0.92 + white * 0.08;
       data[i] = last * 0.6;
     }
 
@@ -760,10 +742,9 @@ export default function App() {
     lp.frequency.value = 1200;
 
     const gain = ctx.createGain();
-    const baseVol = clamp01(vol.door * 0.55) * effectiveMaster; // dinleme sesini “kapı” kanalından yönetelim
+    const baseVol = clamp01(vol.door * 0.55) * effectiveMaster;
     gain.gain.value = Math.max(0.0001, baseVol * 0.28);
 
-    // fade in/out
     const now = ctx.currentTime;
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.linearRampToValueAtTime(gain.gain.value, now + 0.06);
@@ -797,7 +778,6 @@ export default function App() {
       await warmUpAudioDevice();
       await ensureAmbientCtx();
 
-      // prime
       try {
         const h = hbARef.current!;
         const old = h.volume;
@@ -814,7 +794,6 @@ export default function App() {
     }
   };
 
-  // gesture içinde çağır
   const ensureAudioNoPopupSync = () => {
     if (audioReadyRef.current) return;
     void unlockAudio();
@@ -879,7 +858,6 @@ export default function App() {
 
   const resetRoundVisuals = () => {
     setMarks(Array.from({ length: DOOR_COUNT }).map(() => false));
-    setYaw(0);
   };
 
   const startNewRoundTimer = (lvl: number, nextSafeDoor?: number) => {
@@ -914,8 +892,6 @@ export default function App() {
 
     startClosingSlow(openedDoor);
     setOpenedDoor(null);
-    setOpeningDoor(null);
-    setHoverDoor(null);
 
     const ns = rand(DOOR_COUNT);
     setSafeDoor(ns);
@@ -939,8 +915,6 @@ export default function App() {
 
     startClosingSlow(openedDoor);
     setOpenedDoor(null);
-    setOpeningDoor(null);
-    setHoverDoor(null);
 
     const ns = rand(DOOR_COUNT);
     setSafeDoor(ns);
@@ -974,8 +948,6 @@ export default function App() {
       window.setTimeout(() => {
         startClosingSlow(openedDoor);
         setOpenedDoor(null);
-        setOpeningDoor(null);
-        setHoverDoor(null);
 
         const ns = rand(DOOR_COUNT);
         setSafeDoor(ns);
@@ -996,8 +968,6 @@ export default function App() {
         window.setTimeout(() => {
           startClosingSlow(openedDoor);
           setOpenedDoor(null);
-          setOpeningDoor(null);
-          setHoverDoor(null);
 
           const ns = rand(DOOR_COUNT);
           setSafeDoor(ns);
@@ -1028,7 +998,6 @@ export default function App() {
     const isSafe = doorIndex === safeDoor;
     const isCursed = cursedDoor === doorIndex;
 
-    // %55 doğru, %45 yalan. (rahatsız edici “güven olmaz” hissi)
     const truthy = Math.random() < (isSafe ? 0.55 : 0.45);
 
     const goodTR = ["İçerisi… fazla sessiz.", "Nefes sesi yok.", "Boşluk hissi."];
@@ -1058,11 +1027,9 @@ export default function App() {
 
   const doListen = (doorIndex: number) => {
     if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null || openingDoor !== null) return;
+    if (openedDoor !== null) return;
 
     ensureAudioNoPopupSync();
-
-    // kısa “dinleme” sesi: hem gıcırdama çok düşük, hem uğultu
     window.setTimeout(() => void playCreak(0.45), 0);
     window.setTimeout(() => void playListenAmbient(520), 0);
 
@@ -1071,7 +1038,7 @@ export default function App() {
 
   const toggleMark = (doorIndex: number) => {
     if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null || openingDoor !== null) return;
+    if (openedDoor !== null) return;
 
     setMarks((prev) => {
       const next = [...prev];
@@ -1079,7 +1046,7 @@ export default function App() {
       return next;
     });
 
-    suppressClickRef.current = true; // mark yaptıysa click açmasın
+    suppressClickRef.current = true;
     triggerPulse(140);
   };
 
@@ -1100,20 +1067,18 @@ export default function App() {
     e.stopPropagation();
 
     if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null || openingDoor !== null) return;
+    if (openedDoor !== null) return;
 
     ensureAudioNoPopupSync();
 
     suppressClickRef.current = false;
     clearHoldTimers();
 
-    // 0.45sn: dinle
     holdListenRef.current = window.setTimeout(() => {
       suppressClickRef.current = true;
       doListen(i);
     }, 450);
 
-    // 1.0sn: işaret
     holdMarkRef.current = window.setTimeout(() => {
       toggleMark(i);
     }, 1000);
@@ -1126,7 +1091,7 @@ export default function App() {
 
   const onPickDoor = (i: number) => {
     if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null || openingDoor !== null) return;
+    if (openedDoor !== null) return;
 
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
@@ -1134,9 +1099,7 @@ export default function App() {
     }
 
     ensureAudioNoPopupSync();
-
     setOpenedDoor(i);
-    setOpeningDoor(i);
 
     window.setTimeout(() => {
       const isSafe = i === safeDoor;
@@ -1167,8 +1130,6 @@ export default function App() {
 
           startClosingSlow(i);
           setOpenedDoor(null);
-          setOpeningDoor(null);
-          setHoverDoor(null);
 
           const ns = rand(DOOR_COUNT);
           setSafeDoor(ns);
@@ -1188,6 +1149,7 @@ export default function App() {
 
       const damage = isCursed ? 2 : 1;
 
+      // Monster görseli yok, ama ses/efekt var
       if (isCritical) {
         playMonster(1.08);
         triggerPulse(340);
@@ -1205,6 +1167,13 @@ export default function App() {
 
   // ---------- timer tick ----------
   useEffect(() => {
+    const clearTimer = () => {
+      if (timerInterval.current) {
+        window.clearInterval(timerInterval.current);
+        timerInterval.current = null;
+      }
+    };
+
     clearTimer();
 
     const shouldRun = phase === "PLAYING" && screen === "GAME" && !scare;
@@ -1228,8 +1197,6 @@ export default function App() {
             window.setTimeout(() => {
               startClosingSlow(openedDoor);
               setOpenedDoor(null);
-              setOpeningDoor(null);
-              setHoverDoor(null);
 
               const ns = rand(DOOR_COUNT);
               setSafeDoor(ns);
@@ -1246,8 +1213,6 @@ export default function App() {
               window.setTimeout(() => {
                 startClosingSlow(openedDoor);
                 setOpenedDoor(null);
-                setOpeningDoor(null);
-                setHoverDoor(null);
 
                 const ns = rand(DOOR_COUNT);
                 setSafeDoor(ns);
@@ -1273,10 +1238,6 @@ export default function App() {
   // cleanup
   useEffect(() => {
     return () => {
-      clearTimer();
-      stopHeartbeatLoop();
-      clearHoldTimers();
-
       if (listenTimerRef.current) window.clearTimeout(listenTimerRef.current);
       if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
       if (scareTimer.current) window.clearTimeout(scareTimer.current);
@@ -1314,7 +1275,6 @@ export default function App() {
     setSafeDoor(ns);
     startNewRoundTimer(levelRef.current, ns);
     setOpenedDoor(null);
-    setOpeningDoor(null);
     setHoverDoor(null);
     setScreen("GAME");
   };
@@ -1332,8 +1292,6 @@ export default function App() {
 
     startClosingSlow(openedDoor);
     setOpenedDoor(null);
-    setOpeningDoor(null);
-    setHoverDoor(null);
 
     const ns = rand(DOOR_COUNT);
     setSafeDoor(ns);
@@ -1343,58 +1301,10 @@ export default function App() {
     ensureSaveEnabled();
   };
 
-  // settings test buttons
-  const testDoor = () => {
-    ensureAudioNoPopupSync();
-    window.setTimeout(() => void playCreak(1), 0);
-  };
-  const testMonster = () => {
-    ensureAudioNoPopupSync();
-    window.setTimeout(() => playMonster(1), 0);
-  };
-  const testHeart = () => {
-    ensureAudioNoPopupSync();
-    window.setTimeout(() => playHeartbeat(), 0);
-  };
-
-  // ---------- corridor drag ----------
-  const onCorridorPointerDown = (e: React.PointerEvent) => {
-    if (screen !== "GAME" || phase !== "PLAYING") return;
-
-    const target = e.target as HTMLElement | null;
-    if (target?.closest?.(".doorBtn")) return;
-
-    dragRef.current.dragging = true;
-    dragRef.current.startX = e.clientX;
-    dragRef.current.startYaw = yawRef.current;
-    dragRef.current.pointerId = e.pointerId;
-
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {}
-  };
-
-  const onCorridorPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current.dragging) return;
-    if (dragRef.current.pointerId !== e.pointerId) return;
-
-    const dx = e.clientX - dragRef.current.startX;
-    const nextYaw = clamp(dragRef.current.startYaw + dx / 280, -0.95, 0.95);
-    setYaw(nextYaw);
-  };
-
-  const onCorridorPointerUp = (e: React.PointerEvent) => {
-    if (!dragRef.current.dragging) return;
-    if (dragRef.current.pointerId !== e.pointerId) return;
-
-    dragRef.current.dragging = false;
-    dragRef.current.pointerId = null;
-
-    setYaw((y) => clamp(y * 0.84, -0.95, 0.95));
-  };
-
   const langList = ["tr", "en", "de", "ru", "fr"] as Lang[];
   const diffList = ["easy", "normal", "hard"] as Difficulty[];
+
+  const doorSrcForIndex = (i: number) => assets.doorImgs[i % assets.doorImgs.length];
 
   // ---------- render ----------
   return (
@@ -1418,19 +1328,6 @@ export default function App() {
         .app{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;position:relative;overflow:hidden;}
         .wrap{width:min(980px, 100%); position:relative; z-index:2;}
 
-        .app.critical::before{
-          content:"";
-          position:fixed; inset:-30px;
-          background:
-            radial-gradient(650px 420px at 50% 45%, rgba(255,0,0,.08), rgba(0,0,0,0) 62%),
-            radial-gradient(900px 520px at 50% 55%, rgba(0,0,0,.35), rgba(0,0,0,.88));
-          opacity:.0;
-          z-index:92;
-          pointer-events:none;
-          animation:critflash 520ms ease-out forwards;
-        }
-        @keyframes critflash{0%{opacity:0; filter:blur(0px)}18%{opacity:1; filter:blur(1.2px)}55%{opacity:.55; filter:blur(.6px)}100%{opacity:0; filter:blur(0px)}}
-
         .centerCard{width:min(680px, 100%);border-radius:22px;border:1px solid rgba(255,255,255,.10);background:rgba(10,10,16,.92);
           box-shadow:0 30px 140px rgba(0,0,0,.70);padding:22px;backdrop-filter: blur(12px);}
         .brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0 2px;}
@@ -1441,20 +1338,6 @@ export default function App() {
         .btn{width:100%;border:none;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(176,141,36,.92);color:#0b0b10;}
         .btnGhost{width:100%;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.92);}
         .btnDisabled{opacity:.45;cursor:not-allowed;}
-
-        .block{margin-top:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);}
-        .blockTitle{font-family:"Creepster",system-ui;letter-spacing:1px;opacity:.9;margin:0 0 10px;text-align:center;}
-        .langRow,.diffRow,.critRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
-        .langBtn,.diffBtn,.critBtn{min-width:72px;border-radius:14px;padding:10px 14px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.28);
-          color:rgba(255,255,255,.92);font-weight:900;letter-spacing:.6px;cursor:pointer;}
-        .diffBtn,.critBtn{min-width:140px;}
-        .langBtn.active,.diffBtn.active,.critBtn.active{background:rgba(176,141,36,.92);color:#0b0b10;border-color:rgba(176,141,36,.92);box-shadow:0 0 18px rgba(176,141,36,.35);}
-
-        .sliderRow{display:grid;grid-template-columns:110px 1fr 64px 70px;gap:10px;align-items:center;margin-top:10px;}
-        .sliderLabel{opacity:.9;font-weight:900;}
-        input[type="range"]{width:100%}
-        .pct{opacity:.85;text-align:right;font-weight:900;}
-        .testBtn{border-radius:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.22);color:rgba(255,255,255,.92);font-weight:900;cursor:pointer;}
 
         .hud{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
         .title{margin:0;font-family:"Rubik Wet Paint",system-ui;font-size:34px;letter-spacing:.5px;line-height:1;opacity:.95;text-shadow:0 10px 40px rgba(0,0,0,.45);}
@@ -1480,34 +1363,36 @@ export default function App() {
         .ecgSvg{width:50%;height:100%;}
         @keyframes scroll{0%{transform:translateX(0%)}100%{transform:translateX(-50%)}}
 
-        /* corridor */
         .corridor{position:relative; width:100%; padding:10px 0 0; user-select:none; touch-action:pan-y;}
-        .track{display:grid; grid-template-columns:repeat(5, 1fr); gap:14px; transform: translateX(calc(var(--yaw) * -90px)); transition: transform 90ms ease-out;}
+        .track{display:grid; grid-template-columns:repeat(5, 1fr); gap:14px;}
         @media (max-width: 860px){ .track{grid-template-columns: repeat(3, 1fr)} }
         @media (max-width: 520px){ .track{grid-template-columns: repeat(2, 1fr)} }
 
         .doorBtn{border:none;background:transparent;padding:0;cursor:pointer;}
         .doorBtn:disabled{cursor:not-allowed;opacity:.65;}
 
-        .doorStage{position:relative;width:100%;height:196px;border-radius:16px;overflow:hidden;box-shadow:0 18px 70px rgba(0,0,0,.45);background:rgba(0,0,0,.25);}
-        .inside{position:absolute;inset:0;background:radial-gradient(260px 180px at 50% 45%, rgba(0,0,0,.05), rgba(0,0,0,.94) 74%);}
-        .frame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;filter:contrast(1.02) brightness(.92);}
-        .leaf{position:absolute;inset:0;width:100%;object-fit:cover;pointer-events:none;transform-origin:22% 38%;
-          transform:perspective(900px) rotateY(0deg);transition:transform 520ms ease;filter:contrast(1.06) brightness(.98);top:-2px;height:calc(100% + 4px);}
-        .ajarHover{transform:perspective(900px) rotateY(-16deg);}
-        .ajarFull{transform:perspective(900px) rotateY(-78deg);}
-        .closingSlow{transition-duration: 980ms !important; transition-timing-function: ease-out !important;}
-        .winGlow{filter: drop-shadow(0 0 18px rgba(176,141,36,.55)) drop-shadow(0 0 40px rgba(176,141,36,.25));}
+        .doorStage{
+          position:relative;width:100%;height:220px;border-radius:16px;overflow:hidden;
+          box-shadow:0 18px 70px rgba(0,0,0,.45);
+          background:rgba(0,0,0,.25);
+          border:1px solid rgba(255,255,255,.10);
+        }
+        .doorImg{
+          width:100%;height:100%;object-fit:cover;display:block;
+          filter:contrast(1.05) brightness(.92);
+          transform:scale(1.02);
+          transition:transform 200ms ease, filter 200ms ease;
+        }
+        .doorStage.hover .doorImg{transform:scale(1.06);filter:contrast(1.08) brightness(.98);}
+        .doorStage.open .doorImg{transform:scale(1.03);filter:contrast(1.12) brightness(.86);}
 
-        .monsterInside{position:absolute;inset:0;opacity:0;transform:scale(.85);transition:opacity 100ms ease, transform 100ms ease;pointer-events:none;filter:brightness(.9) contrast(1.08);}
-        .monsterInside img{width:100%;height:100%;object-fit:cover;}
-        .monsterShow{opacity:1;transform:scale(1.05);}
-
-        .scareOverlay{position:fixed;inset:0;z-index:90;pointer-events:none;opacity:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.72);}
-        .app.scare .scareOverlay{opacity:1;}
-        .scareImg{width:min(720px, 92vw);height:min(520px, 72vh);object-fit:cover;border-radius:18px;filter:contrast(1.15) brightness(.85);
-          transform:scale(.65);animation:zoompop 420ms ease-out forwards;box-shadow:0 40px 160px rgba(0,0,0,.70);}
-        @keyframes zoompop{0%{transform:scale(.60)}70%{transform:scale(1.12)}100%{transform:scale(1.02)}}
+        .markBadge{
+          position:absolute; right:10px; top:10px; z-index:7;
+          padding:6px 8px; border-radius:999px;
+          background:rgba(176,141,36,.18);
+          border:1px solid rgba(176,141,36,.45);
+          font-weight:900; font-size:11px; letter-spacing:.6px;
+        }
 
         .pulse::after{content:"";position:fixed;inset:-20px;background:rgba(0,0,0,.65);animation:pulsefx .22s ease-out forwards;z-index:70;pointer-events:none;}
         @keyframes pulsefx{0%{opacity:0;transform:scale(1.02)}60%{opacity:1;transform:scale(1.0)}100%{opacity:0;transform:scale(1.0)}}
@@ -1518,41 +1403,8 @@ export default function App() {
         .modalTitle{margin:0;font-family:"Creepster",system-ui;font-size:26px;letter-spacing:1px;}
         .modalInfo{margin:10px 0 14px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.45;}
         .btnRow{display:flex;flex-direction:column;gap:10px;}
-
-        .winToast{position:fixed; inset:0; display:flex; align-items:center; justify-content:center;pointer-events:none; z-index:85;
-          background: radial-gradient(700px 380px at 50% 45%, rgba(0,0,0,.10), rgba(0,0,0,.62));opacity:0; transform:scale(.98);
-          transition:opacity 160ms ease, transform 160ms ease;}
-        .winToast.show{opacity:1; transform:scale(1);}
-        .winText{font-family:"Creepster", system-ui;font-size:min(82px, 12vw);letter-spacing:2px;color:var(--gold);
-          text-shadow: 0 0 18px rgba(176,141,36,.55), 0 20px 80px rgba(0,0,0,.75);text-align:center;line-height:0.95;}
-
-        .creditsList{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
-        .creditItem{padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);}
-        .creditRole{font-family:"Creepster",system-ui;letter-spacing:.8px;opacity:.9;}
-        .creditName{margin-top:4px;font-weight:900;letter-spacing:.2px;}
-
-        .listenToast{
-          position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
-          z-index:95; pointer-events:none;
-          padding:10px 12px; border-radius:14px;
-          background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.14);
-          backdrop-filter: blur(8px);
-          font-family:"UnifrakturCook",system-ui;
-          letter-spacing:.8px; color: rgba(255,255,255,.92);
-          box-shadow:0 18px 70px rgba(0,0,0,.55);
-          max-width:min(720px, 92vw);
-          text-align:center;
-        }
-        .markBadge{
-          position:absolute; right:10px; top:10px; z-index:7;
-          padding:6px 8px; border-radius:999px;
-          background:rgba(176,141,36,.18);
-          border:1px solid rgba(176,141,36,.45);
-          font-weight:900; font-size:11px; letter-spacing:.6px;
-        }
       `}</style>
 
-      {/* MENU */}
       {screen === "MENU" && (
         <div className="centerCard">
           <div className="brand">
@@ -1581,20 +1433,30 @@ export default function App() {
         </div>
       )}
 
-      {/* SETTINGS */}
       {screen === "SETTINGS" && (
         <div className="centerCard">
-          <div className="blockTitle" style={{ marginTop: 6 }}>
+          <div style={{ fontFamily: "Creepster, system-ui", letterSpacing: 1, textAlign: "center", marginTop: 6 }}>
             {t("settingsTitle")}
           </div>
 
-          <div className="block">
-            <div className="blockTitle">{t("langTitle")}</div>
-            <div className="langRow">
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 16, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.10)" }}>
+            <div style={{ fontFamily: "Creepster, system-ui", letterSpacing: 1, textAlign: "center", marginBottom: 10 }}>
+              {t("langTitle")}
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
               {langList.map((l) => (
                 <button
                   key={l}
-                  className={`langBtn ${lang === l ? "active" : ""}`}
+                  style={{
+                    minWidth: 72,
+                    borderRadius: 14,
+                    padding: "10px 14px",
+                    border: "1px solid rgba(255,255,255,.16)",
+                    background: lang === l ? "rgba(176,141,36,.92)" : "rgba(0,0,0,.28)",
+                    color: lang === l ? "#0b0b10" : "rgba(255,255,255,.92)",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
                   onClick={() => setLang(l)}
                   type="button"
                 >
@@ -1604,102 +1466,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="block">
-            <div className="blockTitle">{t("difficultyTitle")}</div>
-            <div className="diffRow">
-              {diffList.map((d) => (
-                <button
-                  key={d}
-                  className={`diffBtn ${difficulty === d ? "active" : ""}`}
-                  onClick={() => setDifficulty(d)}
-                  type="button"
-                >
-                  {t(d === "easy" ? "difficulty_easy" : d === "hard" ? "difficulty_hard" : "difficulty_normal")}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="block">
-            <div className="blockTitle">{t("criticalTitle")}</div>
-            <div className="critRow">
-              <button className={`critBtn ${criticalScare ? "active" : ""}`} onClick={() => setCriticalScare(true)}>
-                {t("criticalOn")}
-              </button>
-              <button className={`critBtn ${!criticalScare ? "active" : ""}`} onClick={() => setCriticalScare(false)}>
-                {t("criticalOff")}
-              </button>
-            </div>
-          </div>
-
-          <div className="block">
-            <div className="blockTitle">{t("audioTitle")}</div>
-
-            <div className="sliderRow">
-              <div className="sliderLabel">{t("master")}</div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(vol.master * 100)}
-                onChange={(e) => setVol((p) => ({ ...p, master: clamp01(Number(e.target.value) / 100) }))}
-              />
-              <div className="pct">{Math.round(vol.master * 100)}%</div>
-              <button className="testBtn" onClick={testHeart} type="button">
-                {t("test")}
-              </button>
-            </div>
-
-            <div className="sliderRow">
-              <div className="sliderLabel">{t("sfxDoor")}</div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(vol.door * 100)}
-                onChange={(e) => setVol((p) => ({ ...p, door: clamp01(Number(e.target.value) / 100) }))}
-              />
-              <div className="pct">{Math.round(vol.door * 100)}%</div>
-              <button className="testBtn" onClick={testDoor} type="button">
-                {t("test")}
-              </button>
-            </div>
-
-            <div className="sliderRow">
-              <div className="sliderLabel">{t("sfxMonster")}</div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(vol.monster * 100)}
-                onChange={(e) => setVol((p) => ({ ...p, monster: clamp01(Number(e.target.value) / 100) }))}
-              />
-              <div className="pct">{Math.round(vol.monster * 100)}%</div>
-              <button className="testBtn" onClick={testMonster} type="button">
-                {t("test")}
-              </button>
-            </div>
-
-            <div className="sliderRow">
-              <div className="sliderLabel">{t("sfxHeartbeat")}</div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(vol.heartbeat * 100)}
-                onChange={(e) => setVol((p) => ({ ...p, heartbeat: clamp01(Number(e.target.value) / 100) }))}
-              />
-              <div className="pct">{Math.round(vol.heartbeat * 100)}%</div>
-              <button className="testBtn" onClick={testHeart} type="button">
-                {t("test")}
-              </button>
-            </div>
-          </div>
-
-          <div className="menuBtns" style={{ marginTop: 14 }}>
-            <button className="btnGhost" onClick={() => setScreen("CREDITS")}>
-              {t("credits")}
-            </button>
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
             <button className="btnGhost" onClick={() => setScreen("MENU")}>
               {t("back")}
             </button>
@@ -1707,34 +1474,6 @@ export default function App() {
         </div>
       )}
 
-      {/* CREDITS */}
-      {screen === "CREDITS" && (
-        <div className="centerCard">
-          <div className="blockTitle" style={{ marginTop: 6 }}>
-            {t("creditsTitle")}
-          </div>
-
-          <div className="creditsList">
-            <div className="creditItem">
-              <div className="creditRole">{t("developer")}</div>
-              <div className="creditName">İhtiyar Oyuncu</div>
-            </div>
-
-            <div className="creditItem">
-              <div className="creditRole">{t("story")}</div>
-              <div className="creditName">Burak Kahraman</div>
-            </div>
-          </div>
-
-          <div className="menuBtns" style={{ marginTop: 14 }}>
-            <button className="btnGhost" onClick={() => setScreen("SETTINGS")}>
-              {t("back")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* GAME */}
       {screen === "GAME" && (
         <div className="wrap">
           <div className="hud">
@@ -1804,22 +1543,12 @@ export default function App() {
             </div>
           )}
 
-          <div
-            className="corridor"
-            onPointerDown={onCorridorPointerDown}
-            onPointerMove={onCorridorPointerMove}
-            onPointerUp={onCorridorPointerUp}
-            style={{ ["--yaw" as any]: yaw }}
-          >
+          <div className="corridor">
             <div className="track">
               {Array.from({ length: DOOR_COUNT }).map((_, i) => {
                 const disabled = phase !== "PLAYING";
-                const isHover = hoverDoor === i && openedDoor === null && openingDoor === null;
-                const isFullOpen = openedDoor === i || openingDoor === i;
-                const leafClass = isFullOpen ? "ajarFull" : isHover ? "ajarHover" : "";
-                const slowClose = closingDoor === i && !isFullOpen;
-                const glow = winFlash && winDoor === i;
-
+                const isHover = hoverDoor === i && openedDoor === null;
+                const isOpen = openedDoor === i;
                 const markOn = marks[i];
 
                 return (
@@ -1835,20 +1564,9 @@ export default function App() {
                     onClick={() => onPickDoor(i)}
                     title="Kapıyı seç"
                   >
-                    <div className="doorStage">
+                    <div className={`doorStage ${isHover ? "hover" : ""} ${isOpen ? "open" : ""}`}>
                       {markOn && <div className="markBadge">{t("mark")}</div>}
-
-                      <div className="inside" />
-                      <div className={`monsterInside ${scare && openedDoor === i ? "monsterShow" : ""}`}>
-                        <img src={assets.monsterImg} alt="Monster" />
-                      </div>
-
-                      <img className="frame" src={assets.doorFrame} alt="Door frame" />
-                      <img
-                        className={`leaf ${leafClass} ${slowClose ? "closingSlow" : ""} ${glow ? "winGlow" : ""}`}
-                        src={assets.doorLeaf}
-                        alt="Door leaf"
-                      />
+                      <img className="doorImg" src={doorSrcForIndex(i)} alt={`Door ${i + 1}`} />
                     </div>
                   </button>
                 );
@@ -1858,15 +1576,16 @@ export default function App() {
         </div>
       )}
 
-      {/* listen toast */}
-      {listenText && <div className="listenToast">{listenText}</div>}
+      {listenText && <div style={{
+        position:"fixed", left:"50%", bottom:22, transform:"translateX(-50%)",
+        zIndex:95, pointerEvents:"none", padding:"10px 12px", borderRadius:14,
+        background:"rgba(0,0,0,.55)", border:"1px solid rgba(255,255,255,.14)",
+        backdropFilter:"blur(8px)", fontFamily:"UnifrakturCook, system-ui",
+        letterSpacing:".8px", color:"rgba(255,255,255,.92)",
+        boxShadow:"0 18px 70px rgba(0,0,0,.55)",
+        maxWidth:"min(720px, 92vw)", textAlign:"center"
+      }}>{listenText}</div>}
 
-      {/* WIN */}
-      <div className={`winToast ${winFlash ? "show" : ""}`}>
-        <div className="winText">{t("survived")}</div>
-      </div>
-
-      {/* OUT */}
       {phase === "OUT" && screen === "GAME" && (
         <div className="overlay">
           <div className="modal">
@@ -1888,11 +1607,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* SCARE */}
-      <div className="scareOverlay">
-        <img className="scareImg" src={assets.monsterImg} alt="Jumpscare" />
-      </div>
     </div>
   );
 }
