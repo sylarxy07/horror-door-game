@@ -1,1612 +1,1394 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-const DOOR_COUNT = 5;
-const MAX_LIVES = 5;
-const CHECKPOINT_LEVEL = 5;
-const MAX_LEVEL = 10;
-
-type Phase = "PLAYING" | "OUT";
-type Screen = "MENU" | "SETTINGS" | "CREDITS" | "GAME";
-type Lang = "tr" | "en" | "de" | "ru" | "fr";
-type Difficulty = "easy" | "normal" | "hard";
-
-const rand = (max: number) => Math.floor(Math.random() * max);
-const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-const clamp01 = (n: number) => clamp(n, 0, 1);
-
-// --- heartbeat wav (dosyasız) ---
-function makeHeartbeatWavDataUri() {
-  const sr = 44100;
-  const dur = 0.42;
-  const n = Math.floor(sr * dur);
-  const data = new Int16Array(n);
-
-  const addThump = (startSec: number, baseHz: number, amp: number, decaySec: number) => {
-    const start = Math.floor(startSec * sr);
-    const len = Math.floor(decaySec * sr);
-    for (let i = 0; i < len; i++) {
-      const idx = start + i;
-      if (idx < 0 || idx >= n) continue;
-      const t = i / sr;
-      const env = Math.exp(-t / decaySec);
-      const s = Math.sin(2 * Math.PI * baseHz * t) * env;
-      const v = s * amp;
-      const cur = data[idx] / 32768;
-      const mix = clamp(cur + v, -0.98, 0.98);
-      data[idx] = Math.floor(mix * 32767);
-    }
-  };
-
-  const addClick = (startSec: number, amp: number, clickMs: number) => {
-    const start = Math.floor(startSec * sr);
-    const len = Math.floor((clickMs / 1000) * sr);
-    for (let i = 0; i < len; i++) {
-      const idx = start + i;
-      if (idx < 0 || idx >= n) continue;
-      const env = Math.exp(-i / (len * 0.35));
-      const noise = (Math.random() * 2 - 1) * env * amp;
-      const cur = data[idx] / 32768;
-      const mix = clamp(cur + noise, -0.98, 0.98);
-      data[idx] = Math.floor(mix * 32767);
-    }
-  };
-
-  addClick(0.0, 0.16, 18);
-  addThump(0.0, 72, 0.55, 0.16);
-  addClick(0.18, 0.12, 16);
-  addThump(0.18, 90, 0.42, 0.13);
-
-  const bytesPerSample = 2;
-  const blockAlign = 1 * bytesPerSample;
-  const byteRate = sr * blockAlign;
-  const dataSize = n * bytesPerSample;
-
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  const writeStr = (off: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
-  };
-
-  writeStr(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sr, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  let off = 44;
-  for (let i = 0; i < n; i++, off += 2) view.setInt16(off, data[i], true);
-
-  const u8 = new Uint8Array(buffer);
-  let bin = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < u8.length; i += chunk) {
-    bin += String.fromCharCode(...u8.subarray(i, i + chunk));
-  }
-  const b64 = btoa(bin);
-  return `data:audio/wav;base64,${b64}`;
-}
-
-async function warmUpAudioDevice() {
-  try {
-    const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
-    const ctx = new Ctx();
-    await ctx.resume();
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    gain.gain.value = 0.00001;
-
-    osc.frequency.value = 200;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    await new Promise((r) => setTimeout(r, 30));
-    osc.stop();
-
-    await new Promise((r) => setTimeout(r, 30));
-    await ctx.close();
-  } catch {}
-}
-
-// ---------- i18n ----------
-type Dict = Record<string, string>;
-const translations: Record<Lang, Dict> = {
-  tr: {
-    menuHint: "Ne yapmak istersin?",
-    newGame: "Yeni Oyun",
-    continue: "Devam Et",
-    settings: "Ayarlar",
-    back: "Geri",
-    credits: "Credits",
-
-    settingsTitle: "Ayarlar",
-    langTitle: "DİL",
-    audioTitle: "SES",
-    difficultyTitle: "ZORLUK",
-    difficulty_easy: "Kolay",
-    difficulty_normal: "Normal",
-    difficulty_hard: "Zor",
-    criticalTitle: "KRİTİK KORKU",
-    criticalOn: "Açık",
-    criticalOff: "Kapalı",
-
-    master: "Genel",
-    sfxDoor: "Kapı",
-    sfxMonster: "Canavar",
-    sfxHeartbeat: "Nabız",
-    test: "Test",
-
-    creditsTitle: "Credits",
-    developer: "Developer",
-    story: "Hikaye Emektarı",
-
-    diedTitle: "Öldün",
-    adText:
-      "Reklam izlersen +2 hak alıp aynı elde devam edersin. Reklam istemiyorsan checkpoint varsa oradan dönersin.",
-    watchAd: "Reklam İzle (+2 Hak)",
-    adLoading: "Reklam yükleniyor...",
-    startLevel1: "Seviye 1'den Başla",
-    continueCheckpoint: "Devam Et (Checkpoint)",
-
-    levelTitle: "Seviye {level}",
-    subtitleNeedAudio: "İlk dokunuşta ses açılacak.",
-    subtitleFindDoor: "Güvenli kapıyı bul.",
-    pulseLabel: "Nabız",
-    survived: "Hayatta Kaldın",
-
-    hudLives: "Hak",
-    hudCheckpoint: "Checkpoint",
-    hudLevel: "Seviye",
-    hudWard: "Tılsım",
-    menuButton: "Menü",
-
-    continueDisabled: "Kayıt yok",
-
-    listenHint: "Basılı tut: 0.45sn dinle • 1.0sn işaret",
-    mark: "İŞARET",
-  },
-  en: {
-    menuHint: "What do you want to do?",
-    newGame: "New Game",
-    continue: "Continue",
-    settings: "Settings",
-    back: "Back",
-    credits: "Credits",
-
-    settingsTitle: "Settings",
-    langTitle: "LANGUAGE",
-    audioTitle: "AUDIO",
-    difficultyTitle: "DIFFICULTY",
-    difficulty_easy: "Easy",
-    difficulty_normal: "Normal",
-    difficulty_hard: "Hard",
-    criticalTitle: "CRITICAL SCARE",
-    criticalOn: "On",
-    criticalOff: "Off",
-
-    master: "Master",
-    sfxDoor: "Door",
-    sfxMonster: "Monster",
-    sfxHeartbeat: "Heartbeat",
-    test: "Test",
-
-    creditsTitle: "Credits",
-    developer: "Developer",
-    story: "Story",
-
-    diedTitle: "You Died",
-    adText: "Watch an ad to get +2 lives and continue. Or return to checkpoint if available.",
-    watchAd: "Watch Ad (+2 Lives)",
-    adLoading: "Loading ad...",
-    startLevel1: "Start from Level 1",
-    continueCheckpoint: "Continue (Checkpoint)",
-
-    levelTitle: "Level {level}",
-    subtitleNeedAudio: "Sound enables on first touch.",
-    subtitleFindDoor: "Find the safe door.",
-    pulseLabel: "Pulse",
-    survived: "You Survived",
-
-    hudLives: "Lives",
-    hudCheckpoint: "Checkpoint",
-    hudLevel: "Level",
-    hudWard: "Ward",
-    menuButton: "Menu",
-
-    continueDisabled: "No save",
-
-    listenHint: "Hold: 0.45s listen • 1.0s mark",
-    mark: "MARK",
-  },
-  de: {
-    menuHint: "Was möchtest du tun?",
-    newGame: "Neues Spiel",
-    continue: "Fortsetzen",
-    settings: "Einstellungen",
-    back: "Zurück",
-    credits: "Credits",
-
-    settingsTitle: "Einstellungen",
-    langTitle: "SPRACHE",
-    audioTitle: "AUDIO",
-    difficultyTitle: "SCHWIERIGKEIT",
-    difficulty_easy: "Leicht",
-    difficulty_normal: "Normal",
-    difficulty_hard: "Schwer",
-    criticalTitle: "KRITISCHER SCHRECK",
-    criticalOn: "An",
-    criticalOff: "Aus",
-
-    master: "Master",
-    sfxDoor: "Tür",
-    sfxMonster: "Monster",
-    sfxHeartbeat: "Puls",
-    test: "Test",
-
-    creditsTitle: "Credits",
-    developer: "Developer",
-    story: "Story",
-
-    diedTitle: "Du bist gestorben",
-    adText: "Werbung ansehen: +2 Leben und weitermachen. Oder zum Checkpoint zurück.",
-    watchAd: "Werbung ansehen (+2 Leben)",
-    adLoading: "Werbung lädt...",
-    startLevel1: "Ab Level 1 starten",
-    continueCheckpoint: "Weiter (Checkpoint)",
-
-    levelTitle: "Level {level}",
-    subtitleNeedAudio: "Sound beim ersten Tip aktiv.",
-    subtitleFindDoor: "Finde die sichere Tür.",
-    pulseLabel: "Puls",
-    survived: "Du hast überlebt",
-
-    hudLives: "Leben",
-    hudCheckpoint: "Checkpoint",
-    hudLevel: "Level",
-    hudWard: "Ward",
-    menuButton: "Menü",
-
-    continueDisabled: "Kein Save",
-
-    listenHint: "Halten: hören/markieren",
-    mark: "MARK",
-  },
-  ru: {
-    menuHint: "Что хочешь сделать?",
-    newGame: "Новая игра",
-    continue: "Продолжить",
-    settings: "Настройки",
-    back: "Назад",
-    credits: "Credits",
-
-    settingsTitle: "Настройки",
-    langTitle: "ЯЗЫК",
-    audioTitle: "ЗВУК",
-    difficultyTitle: "СЛОЖНОСТЬ",
-    difficulty_easy: "Легко",
-    difficulty_normal: "Нормально",
-    difficulty_hard: "Сложно",
-    criticalTitle: "КРИТИЧЕСКИЙ СКРИМЕР",
-    criticalOn: "Вкл",
-    criticalOff: "Выкл",
-
-    master: "Общий",
-    sfxDoor: "Дверь",
-    sfxMonster: "Монстр",
-    sfxHeartbeat: "Пульс",
-    test: "Тест",
-
-    creditsTitle: "Credits",
-    developer: "Developer",
-    story: "Сюжет",
-
-    diedTitle: "Ты погиб",
-    adText: "Смотри рекламу: +2 жизни и продолжай. Или вернись к чекпоинту.",
-    watchAd: "Смотреть рекламу (+2 жизни)",
-    adLoading: "Загрузка рекламы...",
-    startLevel1: "Начать с уровня 1",
-    continueCheckpoint: "Продолжить (Checkpoint)",
-
-    levelTitle: "Уровень {level}",
-    subtitleNeedAudio: "Звук включится при первом касании.",
-    subtitleFindDoor: "Найди безопасную дверь.",
-    pulseLabel: "Пульс",
-    survived: "Ты выжил",
-
-    hudLives: "Жизни",
-    hudCheckpoint: "Checkpoint",
-    hudLevel: "Уровень",
-    hudWard: "Ward",
-    menuButton: "Меню",
-
-    continueDisabled: "Нет сохранения",
-
-    listenHint: "Удерживай: слушать/пометить",
-    mark: "MARK",
-  },
-  fr: {
-    menuHint: "Que veux-tu faire ?",
-    newGame: "Nouvelle partie",
-    continue: "Continuer",
-    settings: "Paramètres",
-    back: "Retour",
-    credits: "Crédits",
-
-    settingsTitle: "Paramètres",
-    langTitle: "LANGUE",
-    audioTitle: "SON",
-    difficultyTitle: "DIFFICULTÉ",
-    difficulty_easy: "Facile",
-    difficulty_normal: "Normal",
-    difficulty_hard: "Difficile",
-    criticalTitle: "FRAYEUR CRITIQUE",
-    criticalOn: "On",
-    criticalOff: "Off",
-
-    master: "Global",
-    sfxDoor: "Porte",
-    sfxMonster: "Monstre",
-    sfxHeartbeat: "Pouls",
-    test: "Test",
-
-    creditsTitle: "Crédits",
-    developer: "Developer",
-    story: "Histoire",
-
-    diedTitle: "Tu es mort",
-    adText: "Regarde une pub : +2 vies et continue. Ou retourne au checkpoint.",
-    watchAd: "Regarder la pub (+2 vies)",
-    adLoading: "Chargement...",
-    startLevel1: "Recommencer au niveau 1",
-    continueCheckpoint: "Continuer (Checkpoint)",
-
-    levelTitle: "Niveau {level}",
-    subtitleNeedAudio: "Le son s'activera au premier toucher.",
-    subtitleFindDoor: "Trouve la porte sûre.",
-    pulseLabel: "Pouls",
-    survived: "Tu as survécu",
-
-    hudLives: "Vies",
-    hudCheckpoint: "Checkpoint",
-    hudLevel: "Niveau",
-    hudWard: "Ward",
-    menuButton: "Menu",
-
-    continueDisabled: "Pas de sauvegarde",
-
-    listenHint: "Maintiens : écouter/marquer",
-    mark: "MARK",
-  },
-};
-
-const langLabel: Record<Lang, string> = { tr: "TR", en: "EN", de: "DE", ru: "RU", fr: "FR" };
-function format(str: string, vars: Record<string, string | number>) {
-  return str.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
-}
-
-// ---------- storage ----------
-const LS_SETTINGS = "kapi_settings_v4";
-const LS_PROGRESS = "kapi_progress_v4";
-
-type SavedSettings = {
-  lang: Lang;
-  difficulty: Difficulty;
-  criticalScare: boolean;
-  vol: { master: number; door: number; monster: number; heartbeat: number };
-};
-
-type SavedProgress = {
-  hasSave: true;
-  level: number;
-  lives: number;
-  maxReachedLevel: number;
-  phase: Phase;
-  ward: number;
-  streak: number;
-};
-
-function safeJsonParse<T>(s: string | null): T | null {
-  if (!s) return null;
-  try {
-    return JSON.parse(s) as T;
-  } catch {
-    return null;
-  }
-}
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CHECKPOINT_LEVEL,
+  DOOR_COUNT,
+  INITIAL_CLUES,
+  INITIAL_PUZZLES,
+  INTERACT_RADIUS,
+  MAX_LEVEL,
+  MAX_LIVES,
+  PATH_LEN,
+  PATH_VIEW,
+  START_POS,
+  TUNNEL_ENTER_RADIUS,
+  TUNNEL_POS,
+} from "./game/constants";
+import { introLines, objectByKey, pathObjects, sidePosts } from "./game/data";
+import type { ClueKey, CluesState, DoorOutcome, PathObject, PuzzleState, RoundLayout, Scene } from "./game/types";
+import { clamp, createRoundLayout, getDoorOutcome } from "./game/utils";
+import "./game/game.css";
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("MENU");
+  const [scene, setScene] = useState<Scene>("MENU");
 
-  // settings
-  const [lang, setLang] = useState<Lang>("tr");
-  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
-  const [criticalScare, setCriticalScare] = useState(true);
-  const [vol, setVol] = useState({ master: 0.9, door: 0.35, monster: 0.95, heartbeat: 0.46 });
+  const [introStep, setIntroStep] = useState(0);
 
-  const dict = translations[lang];
-  const t = (key: string, vars?: Record<string, string | number>) => {
-    const base = dict[key] ?? translations.tr[key] ?? key;
-    return vars ? format(base, vars) : base;
-  };
+  const [fadeOn, setFadeOn] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [hitPulse, setHitPulse] = useState<0 | 1 | 2>(0);
+  const [shake, setShake] = useState<0 | 1 | 2>(0);
 
-  // progress/game
-  const [audioReady, setAudioReady] = useState(false);
-  const audioReadyRef = useRef(false);
-  const unlockingRef = useRef(false);
-
-  const [phase, setPhase] = useState<Phase>("PLAYING");
-  const [level, setLevel] = useState(1);
-  const [maxReachedLevel, setMaxReachedLevel] = useState(1);
-  const [lives, setLives] = useState(MAX_LIVES);
-  const [hasSave, setHasSave] = useState(false);
-
-  // mechanics
-  const [streak, setStreak] = useState(0);
-  const [ward, setWard] = useState(0);
-
-  const [marks, setMarks] = useState<boolean[]>(() => Array.from({ length: DOOR_COUNT }).map(() => false));
-  const [listenText, setListenText] = useState<string | null>(null);
-  const listenTimerRef = useRef<number | null>(null);
-
-  const suppressClickRef = useRef(false);
-  const holdListenRef = useRef<number | null>(null);
-  const holdMarkRef = useRef<number | null>(null);
-
-  const levelRef = useRef(1);
-  useEffect(() => {
-    levelRef.current = level;
-  }, [level]);
-
-  const [safeDoor, setSafeDoor] = useState(() => rand(DOOR_COUNT));
-  const [cursedDoor, setCursedDoor] = useState<number | null>(null);
-
-  const [openedDoor, setOpenedDoor] = useState<number | null>(null);
-  const [hoverDoor, setHoverDoor] = useState<number | null>(null);
-
-  const [closingDoor, setClosingDoor] = useState<number | null>(null);
-  const closingTimer = useRef<number | null>(null);
-
-  const [scare, setScare] = useState(false);
-  const scareTimer = useRef<number | null>(null);
-
-  const [pulse, setPulse] = useState(false);
-  const pulseTimer = useRef<number | null>(null);
-
-  const [critical, setCritical] = useState(false);
-  const criticalTimer = useRef<number | null>(null);
-
-  const [winFlash, setWinFlash] = useState(false);
-  const [winDoor, setWinDoor] = useState<number | null>(null);
-  const winTimer = useRef<number | null>(null);
-
-  const [adLoading, setAdLoading] = useState(false);
-
-  // timer
-  const [timeLeftMs, setTimeLeftMs] = useState(0);
-  const roundTotalMsRef = useRef(15000);
-  const timerInterval = useRef<number | null>(null);
-  const timeoutLockRef = useRef(false);
-  const [roundId, setRoundId] = useState(0);
-
-  // NEW ASSETS (GitHub public/images/*)
-  const assets = useMemo(
-    () => ({
-      doorImgs: [
-        "/images/doors/door_wood_01.png",
-        "/images/doors/door_wood_chain_02.png",
-        "/images/doors/door_wood_broken_03.png",
-        "/images/doors/door_wood_plate_blank_04.png",
-        "/images/doors/door_wood_cursed_05.png",
-      ],
-      creak: "/door.mp3",
-      monster: "/monster.mp3",
-    }),
-    []
+  // BEACH
+  const [clues, setClues] = useState<CluesState>(INITIAL_CLUES);
+  const [selectedClue, setSelectedClue] = useState<ClueKey | null>(null);
+  const [beachHint, setBeachHint] = useState(
+    "Tamay ayağa kalktı. Sisli yürüyüş yolunda eski deneklere ait izler var gibi..."
   );
+  const [redLightUnlocked, setRedLightUnlocked] = useState(false);
+  const [redLightPhase, setRedLightPhase] = useState<"IDLE" | "SHOW_TEXT" | "READY">("IDLE");
+  const [tamayPos, setTamayPos] = useState(START_POS);
+  const [cameraPos, setCameraPos] = useState(clamp(START_POS - 18, 0, PATH_LEN - PATH_VIEW));
+  const [moveDir, setMoveDir] = useState<-1 | 0 | 1>(0);
+  const [journalOpen, setJournalOpen] = useState(false);
 
-  // audio refs (HTMLAudio)
-  const monsterRef = useRef<HTMLAudioElement | null>(null);
-  const hbUriRef = useRef<string | null>(null);
-  const hbARef = useRef<HTMLAudioElement | null>(null);
-  const hbBRef = useRef<HTMLAudioElement | null>(null);
-  const hbToggleRef = useRef(false);
+  // movement feel
+  const [walkClock, setWalkClock] = useState(0);
+  const [walkBlend, setWalkBlend] = useState(0);
 
-  // tiny ambient via AudioContext (for listening)
-  const ambientCtxRef = useRef<AudioContext | null>(null);
-  const ambientMasterRef = useRef<GainNode | null>(null);
+  // puzzles
+  const [puzzles, setPuzzles] = useState<PuzzleState>(INITIAL_PUZZLES);
+  const [puzzleFeedback, setPuzzleFeedback] = useState("");
 
-  // heartbeat scheduler
-  const beatMsRef = useRef(1200);
-  const hbTimerRef = useRef<number | null>(null);
-  const hbRunningRef = useRef(false);
+  // TUNNEL / DOOR GAME
+  const [level, setLevel] = useState(1);
+  const [lives, setLives] = useState(MAX_LIVES);
+  const [checkpointUnlocked, setCheckpointUnlocked] = useState(false);
 
-  const phaseRef = useRef<Phase>("PLAYING");
-  const scareRef = useRef(false);
-  const timeLeftMsRef = useRef(0);
-  const screenRef = useRef<Screen>("MENU");
+  const [roundLayout, setRoundLayout] = useState<RoundLayout>(createRoundLayout());
+  const [selectedDoor, setSelectedDoor] = useState<number | null>(null);
+  const [doorsRevealed, setDoorsRevealed] = useState(false);
+  const [doorInputLocked, setDoorInputLocked] = useState(false);
+  const [doorHint, setDoorHint] = useState("Doğru kapıyı seç.");
+  const [lastOutcome, setLastOutcome] = useState<DoorOutcome | null>(null);
+
+  const timeoutRefs = useRef<number[]>([]);
+  const touchYRef = useRef<number | null>(null);
+
+  // refs for smooth camera loop
+  const tamayPosRef = useRef(tamayPos);
+  const moveDirRef = useRef(moveDir);
+  const selectedClueRef = useRef<ClueKey | null>(selectedClue);
 
   useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
+    tamayPosRef.current = tamayPos;
+  }, [tamayPos]);
   useEffect(() => {
-    scareRef.current = scare;
-  }, [scare]);
+    moveDirRef.current = moveDir;
+  }, [moveDir]);
   useEffect(() => {
-    screenRef.current = screen;
-  }, [screen]);
-  useEffect(() => {
-    timeLeftMsRef.current = timeLeftMs;
+    selectedClueRef.current = selectedClue;
+  }, [selectedClue]);
 
-    const total = roundTotalMsRef.current || 1;
-    const ratio = clamp(timeLeftMs / total, 0, 1);
-    const base = difficulty === "easy" ? 1300 : difficulty === "hard" ? 1050 : 1200;
-    beatMsRef.current = ratio > 0.66 ? base : ratio > 0.33 ? base * 0.75 : base * 0.54;
-  }, [timeLeftMs, difficulty]);
+  const inspectedCount = useMemo(() => Object.values(clues).filter(Boolean).length, [clues]);
+  const allCluesFound = useMemo(() => Object.values(clues).every(Boolean), [clues]);
 
-  // load settings + progress
-  useEffect(() => {
-    const s = safeJsonParse<SavedSettings>(localStorage.getItem(LS_SETTINGS));
-    if (s) {
-      if (s.lang) setLang(s.lang);
-      if (s.difficulty) setDifficulty(s.difficulty);
-      if (typeof s.criticalScare === "boolean") setCriticalScare(s.criticalScare);
-      if (s.vol) {
-        setVol({
-          master: clamp01(s.vol.master ?? 0.9),
-          door: clamp01(s.vol.door ?? 0.35),
-          monster: clamp01(s.vol.monster ?? 0.95),
-          heartbeat: clamp01(s.vol.heartbeat ?? 0.46),
-        });
+  const nearestObject = useMemo(() => {
+    let best: { obj: PathObject; dist: number } | null = null;
+    for (const obj of pathObjects) {
+      const dist = Math.abs(tamayPos - obj.pos);
+      if (!best || dist < best.dist) best = { obj, dist };
+    }
+    return best;
+  }, [tamayPos]);
+
+  const interactableObject = useMemo(() => {
+    if (!nearestObject) return null;
+    if (nearestObject.dist > INTERACT_RADIUS) return null;
+    return nearestObject.obj;
+  }, [nearestObject]);
+
+  const nextUnsolvedObject = useMemo(() => {
+    const unsolved = pathObjects.filter((o) => !clues[o.key]);
+    if (!unsolved.length) return null;
+    let best: { obj: PathObject; dist: number } | null = null;
+    for (const obj of unsolved) {
+      const dist = Math.abs(tamayPos - obj.pos);
+      if (!best || dist < best.dist) best = { obj, dist };
+    }
+    return best;
+  }, [clues, tamayPos]);
+
+  const canInspect =
+    scene === "BEACH" &&
+    !!interactableObject &&
+    !selectedClue &&
+    !clues[interactableObject.key] &&
+    !isTransitioning;
+
+  const canEnterTunnel =
+    scene === "BEACH" &&
+    redLightPhase === "READY" &&
+    !selectedClue &&
+    !isTransitioning &&
+    tamayPos >= TUNNEL_POS - TUNNEL_ENTER_RADIUS;
+
+  const pathProgressPercentRaw = Math.round((Math.min(tamayPos, TUNNEL_POS) / TUNNEL_POS) * 100);
+  const pathProgressPercent = canEnterTunnel ? 100 : pathProgressPercentRaw;
+
+  const targetHint = useMemo(() => {
+    if (scene !== "BEACH") return "";
+    if (canEnterTunnel) return "Hedef: Tünel girişi hazır (E)";
+    if (!allCluesFound) {
+      if (interactableObject && !clues[interactableObject.key]) return `Yakın: ${interactableObject.label} (E)`;
+      if (nextUnsolvedObject) {
+        const dir = nextUnsolvedObject.obj.pos > tamayPos ? "ileride" : "geride";
+        return `Sonraki hedef: ${nextUnsolvedObject.obj.label} (${Math.round(nextUnsolvedObject.dist)}m, ${dir})`;
       }
+      return "Hedef aranıyor...";
     }
+    const distToTunnel = Math.max(0, Math.round(TUNNEL_POS - tamayPos));
+    return `Kırmızı ışık aktif. Tünel ${distToTunnel}m`;
+  }, [scene, canEnterTunnel, allCluesFound, interactableObject, clues, nextUnsolvedObject, tamayPos]);
 
-    const p = safeJsonParse<SavedProgress>(localStorage.getItem(LS_PROGRESS));
-    if (p?.hasSave) {
-      setHasSave(true);
-      setLevel(clamp(p.level ?? 1, 1, MAX_LEVEL));
-      setLives(clamp(p.lives ?? MAX_LIVES, 0, MAX_LIVES));
-      setMaxReachedLevel(clamp(p.maxReachedLevel ?? 1, 1, MAX_LEVEL));
-      setPhase((p.phase ?? "PLAYING") as Phase);
-      setWard(clamp(p.ward ?? 0, 0, 1));
-      setStreak(clamp(p.streak ?? 0, 0, 999));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const addTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = window.setTimeout(fn, ms);
+    timeoutRefs.current.push(id);
+    return id;
   }, []);
 
-  // save settings
+  const clearAllTimeouts = useCallback(() => {
+    timeoutRefs.current.forEach((id) => window.clearTimeout(id));
+    timeoutRefs.current = [];
+  }, []);
+
   useEffect(() => {
-    const payload: SavedSettings = {
-      lang,
-      difficulty,
-      criticalScare,
-      vol: {
-        master: clamp01(vol.master),
-        door: clamp01(vol.door),
-        monster: clamp01(vol.monster),
-        heartbeat: clamp01(vol.heartbeat),
-      },
-    };
-    try {
-      localStorage.setItem(LS_SETTINGS, JSON.stringify(payload));
-    } catch {}
-  }, [lang, difficulty, criticalScare, vol.master, vol.door, vol.monster, vol.heartbeat]);
+    return () => clearAllTimeouts();
+  }, [clearAllTimeouts]);
 
-  // save progress
-  useEffect(() => {
-    if (!hasSave) return;
-    const payload: SavedProgress = {
-      hasSave: true,
-      level,
-      lives,
-      maxReachedLevel,
-      phase,
-      ward,
-      streak,
-    };
-    try {
-      localStorage.setItem(LS_PROGRESS, JSON.stringify(payload));
-    } catch {}
-  }, [hasSave, level, lives, maxReachedLevel, phase, ward, streak]);
+  const triggerHitPulse = useCallback((strength: 1 | 2) => {
+    setHitPulse(strength);
+    addTimeout(() => setHitPulse(0), strength === 2 ? 360 : 240);
+  }, [addTimeout]);
 
-  const ensureSaveEnabled = () => {
-    if (!hasSave) setHasSave(true);
-  };
+  const triggerShake = useCallback((strength: 1 | 2) => {
+    setShake(strength);
+    addTimeout(() => setShake(0), strength === 2 ? 320 : 180);
+  }, [addTimeout]);
 
-  const clearSave = () => {
-    setHasSave(false);
-    try {
-      localStorage.removeItem(LS_PROGRESS);
-    } catch {}
-  };
+  const goWithFade = useCallback((nextScene: Scene) => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
+    setFadeOn(true);
+    setMoveDir(0);
 
-  // ---------- AUDIO ----------
-  const effectiveMaster = clamp01(vol.master);
+    addTimeout(() => setScene(nextScene), 520);
+    addTimeout(() => {
+      setFadeOn(false);
+      setIsTransitioning(false);
+    }, 980);
+  }, [addTimeout, isTransitioning]);
 
-  const safePlay = async (el: HTMLAudioElement | null, volume01: number) => {
-    if (!audioReadyRef.current || !el) return;
-    const v = clamp01(volume01) * effectiveMaster;
-    if (v <= 0.0001) return;
-    try {
-      el.pause();
-      el.currentTime = 0;
-      el.volume = v;
-      await el.play();
-    } catch {}
-  };
+  const resetFullGameState = () => {
+    clearAllTimeouts();
 
-  const playCreak = async (mult = 1) => {
-    if (!audioReadyRef.current) return;
-    const v = clamp01(vol.door * mult) * effectiveMaster;
-    if (v <= 0.0001) return;
-    try {
-      const a = new Audio(assets.creak);
-      a.volume = v;
-      a.currentTime = 0;
-      await a.play();
-    } catch {}
-  };
+    setScene("MENU");
+    setIntroStep(0);
 
-  const playMonster = (boost = 1) => void safePlay(monsterRef.current, clamp01(vol.monster * boost));
+    setFadeOn(false);
+    setIsTransitioning(false);
+    setHitPulse(0);
+    setShake(0);
 
-  const playHeartbeat = () => {
-    if (!audioReadyRef.current) return;
-    const pick = hbToggleRef.current ? hbBRef.current : hbARef.current;
-    hbToggleRef.current = !hbToggleRef.current;
-    if (!pick) return;
-    void safePlay(pick, vol.heartbeat);
-  };
+    setClues(INITIAL_CLUES);
+    setSelectedClue(null);
+    setBeachHint("Tamay ayağa kalktı. Sisli yürüyüş yolunda eski deneklere ait izler var gibi...");
+    setRedLightUnlocked(false);
+    setRedLightPhase("IDLE");
+    setTamayPos(START_POS);
+    setCameraPos(clamp(START_POS - 18, 0, PATH_LEN - PATH_VIEW));
+    setMoveDir(0);
+    setJournalOpen(false);
+    setWalkClock(0);
+    setWalkBlend(0);
 
-  const startHeartbeatLoop = (initialDelayMs?: number) => {
-    if (hbRunningRef.current) return;
-    hbRunningRef.current = true;
-
-    const tick = () => {
-      if (!hbRunningRef.current) return;
-
-      const ok =
-        audioReadyRef.current &&
-        phaseRef.current === "PLAYING" &&
-        !scareRef.current &&
-        timeLeftMsRef.current > 0 &&
-        screenRef.current === "GAME";
-
-      if (ok) playHeartbeat();
-      hbTimerRef.current = window.setTimeout(tick, beatMsRef.current);
-    };
-
-    const firstDelay = initialDelayMs ?? beatMsRef.current;
-    hbTimerRef.current = window.setTimeout(tick, firstDelay);
-  };
-
-  const stopHeartbeatLoop = () => {
-    hbRunningRef.current = false;
-    if (hbTimerRef.current) {
-      window.clearTimeout(hbTimerRef.current);
-      hbTimerRef.current = null;
-    }
-  };
-
-  const ensureAmbientCtx = async () => {
-    const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext | undefined;
-    if (!Ctx) return;
-    if (!ambientCtxRef.current) {
-      ambientCtxRef.current = new Ctx();
-      ambientMasterRef.current = ambientCtxRef.current.createGain();
-      ambientMasterRef.current.gain.value = 0.22;
-      ambientMasterRef.current.connect(ambientCtxRef.current.destination);
-    }
-    try {
-      await ambientCtxRef.current.resume();
-    } catch {}
-  };
-
-  const playListenAmbient = async (ms = 520) => {
-    if (!audioReadyRef.current) return;
-    await ensureAmbientCtx();
-    const ctx = ambientCtxRef.current;
-    const master = ambientMasterRef.current;
-    if (!ctx || !master) return;
-
-    const dur = clamp(ms, 120, 1400) / 1000;
-
-    const bufferSize = Math.floor(ctx.sampleRate * dur);
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-
-    let last = 0;
-    for (let i = 0; i < bufferSize; i++) {
-      const white = Math.random() * 2 - 1;
-      last = last * 0.92 + white * 0.08;
-      data[i] = last * 0.6;
-    }
-
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-
-    const hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 140;
-
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 1200;
-
-    const gain = ctx.createGain();
-    const baseVol = clamp01(vol.door * 0.55) * effectiveMaster;
-    gain.gain.value = Math.max(0.0001, baseVol * 0.28);
-
-    const now = ctx.currentTime;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(gain.gain.value, now + 0.06);
-    gain.gain.linearRampToValueAtTime(0.0001, now + dur);
-
-    src.connect(hp);
-    hp.connect(lp);
-    lp.connect(gain);
-    gain.connect(master);
-
-    try {
-      src.start();
-      src.stop(now + dur + 0.02);
-    } catch {}
-  };
-
-  const unlockAudio = async () => {
-    if (audioReadyRef.current) return;
-    if (unlockingRef.current) return;
-
-    unlockingRef.current = true;
-    try {
-      audioReadyRef.current = true;
-      setAudioReady(true);
-
-      if (!monsterRef.current) monsterRef.current = new Audio(assets.monster);
-      if (!hbUriRef.current) hbUriRef.current = makeHeartbeatWavDataUri();
-      if (!hbARef.current) hbARef.current = new Audio(hbUriRef.current);
-      if (!hbBRef.current) hbBRef.current = new Audio(hbUriRef.current);
-
-      await warmUpAudioDevice();
-      await ensureAmbientCtx();
-
-      try {
-        const h = hbARef.current!;
-        const old = h.volume;
-        h.volume = 0.0001;
-        await h.play();
-        h.pause();
-        h.currentTime = 0;
-        h.volume = old;
-      } catch {}
-
-      startHeartbeatLoop(900);
-    } finally {
-      unlockingRef.current = false;
-    }
-  };
-
-  const ensureAudioNoPopupSync = () => {
-    if (audioReadyRef.current) return;
-    void unlockAudio();
-  };
-
-  // ---------- FX ----------
-  const triggerPulse = (ms = 220) => {
-    setPulse(true);
-    if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
-    pulseTimer.current = window.setTimeout(() => setPulse(false), ms);
-  };
-
-  const triggerScare = (ms = 420) => {
-    setScare(true);
-    if (scareTimer.current) window.clearTimeout(scareTimer.current);
-    scareTimer.current = window.setTimeout(() => setScare(false), ms);
-  };
-
-  const triggerCritical = () => {
-    setCritical(true);
-    if (criticalTimer.current) window.clearTimeout(criticalTimer.current);
-    criticalTimer.current = window.setTimeout(() => setCritical(false), 520);
-  };
-
-  const triggerWin = (doorIndex: number) => {
-    setWinDoor(doorIndex);
-    setWinFlash(true);
-    if (winTimer.current) window.clearTimeout(winTimer.current);
-    winTimer.current = window.setTimeout(() => {
-      setWinFlash(false);
-      setWinDoor(null);
-    }, 700);
-  };
-
-  const startClosingSlow = (doorIndex: number | null) => {
-    if (doorIndex === null) return;
-    setClosingDoor(doorIndex);
-    if (closingTimer.current) window.clearTimeout(closingTimer.current);
-    closingTimer.current = window.setTimeout(() => setClosingDoor(null), 980);
-  };
-
-  // ---------- timer/difficulty ----------
-  const calcRoundMs = (lvl: number) => {
-    const baseSec = clamp(17 - Math.floor(lvl * 0.6), 11, 17);
-    const mult = difficulty === "easy" ? 1.12 : difficulty === "hard" ? 0.86 : 1.0;
-    const sec = clamp(Math.round(baseSec * mult), 9, 20);
-    return sec * 1000;
-  };
-
-  const clearTimer = () => {
-    if (timerInterval.current) {
-      window.clearInterval(timerInterval.current);
-      timerInterval.current = null;
-    }
-  };
-
-  const rollCursedDoor = (safe: number) => {
-    let d = rand(DOOR_COUNT);
-    if (d === safe) d = (d + 1) % DOOR_COUNT;
-    return d;
-  };
-
-  const resetRoundVisuals = () => {
-    setMarks(Array.from({ length: DOOR_COUNT }).map(() => false));
-  };
-
-  const startNewRoundTimer = (lvl: number, nextSafeDoor?: number) => {
-    const total = calcRoundMs(lvl);
-    roundTotalMsRef.current = total;
-    timeoutLockRef.current = false;
-    setTimeLeftMs(total);
-    setRoundId((r) => r + 1);
-
-    const safe = typeof nextSafeDoor === "number" ? nextSafeDoor : safeDoor;
-    setCursedDoor(rollCursedDoor(safe));
-
-    resetRoundVisuals();
-  };
-
-  const getStartLevelFromCheckpoint = () => (maxReachedLevel >= CHECKPOINT_LEVEL ? CHECKPOINT_LEVEL : 1);
-
-  const restartFromCheckpoint = () => {
-    ensureAudioNoPopupSync();
-    ensureSaveEnabled();
-
-    const startLevel = getStartLevelFromCheckpoint();
-
-    setPhase("PLAYING");
-    setLives(MAX_LIVES);
-
-    setLevel(startLevel);
-    setMaxReachedLevel((prev) => Math.max(prev, startLevel));
-
-    setStreak(0);
-    setWard(0);
-
-    startClosingSlow(openedDoor);
-    setOpenedDoor(null);
-
-    const ns = rand(DOOR_COUNT);
-    setSafeDoor(ns);
-    startNewRoundTimer(startLevel, ns);
-
-    setScreen("GAME");
-  };
-
-  const restartFromLevel1 = () => {
-    ensureAudioNoPopupSync();
-    ensureSaveEnabled();
-
-    setPhase("PLAYING");
-    setLives(MAX_LIVES);
+    setPuzzles(INITIAL_PUZZLES);
+    setPuzzleFeedback("");
 
     setLevel(1);
-    setMaxReachedLevel(1);
-
-    setStreak(0);
-    setWard(0);
-
-    startClosingSlow(openedDoor);
-    setOpenedDoor(null);
-
-    const ns = rand(DOOR_COUNT);
-    setSafeDoor(ns);
-    startNewRoundTimer(1, ns);
-
-    setScreen("GAME");
+    setLives(MAX_LIVES);
+    setCheckpointUnlocked(false);
+    setRoundLayout(createRoundLayout());
+    setSelectedDoor(null);
+    setDoorsRevealed(false);
+    setDoorInputLocked(false);
+    setDoorHint("Doğru kapıyı seç.");
+    setLastOutcome(null);
   };
 
-  // init
+  const startNewRun = () => {
+    resetFullGameState();
+    setScene("INTRO");
+  };
+
+  // when BEACH opens, snap camera near player start (only once on entry)
   useEffect(() => {
-    const ns = rand(DOOR_COUNT);
-    setSafeDoor(ns);
-    startNewRoundTimer(1, ns);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!audioReady) return;
-    if (phase === "PLAYING" && screen === "GAME") startHeartbeatLoop();
-    else stopHeartbeatLoop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioReady, phase, screen]);
-
-  // ---------- mechanics ----------
-  const applyDamage = (damage: number, isCritical: boolean) => {
-    if (ward > 0) {
-      setWard(0);
-      setStreak(0);
-      triggerPulse(isCritical ? 320 : 220);
-
-      window.setTimeout(() => {
-        startClosingSlow(openedDoor);
-        setOpenedDoor(null);
-
-        const ns = rand(DOOR_COUNT);
-        setSafeDoor(ns);
-        startNewRoundTimer(levelRef.current, ns);
-      }, 680);
-
-      return;
+    if (scene === "BEACH") {
+      setCameraPos(clamp(tamayPosRef.current - 18, 0, PATH_LEN - PATH_VIEW));
+      setWalkBlend(0);
     }
+  }, [scene]);
 
-    const extraLose = isCritical && Math.random() < 0.22 ? 1 : 0;
-    const totalLose = damage + extraLose;
+  // BEACH movement loop (player position)
+  useEffect(() => {
+    if (scene !== "BEACH") return;
+    if (moveDir === 0) return;
+    if (selectedClue) return;
 
-    setLives((prev) => {
-      const next = Math.max(0, prev - totalLose);
-      if (next <= 0) {
-        window.setTimeout(() => setPhase("OUT"), 260);
-      } else {
-        window.setTimeout(() => {
-          startClosingSlow(openedDoor);
-          setOpenedDoor(null);
+    let raf = 0;
+    let last = performance.now();
 
-          const ns = rand(DOOR_COUNT);
-          setSafeDoor(ns);
-          startNewRoundTimer(levelRef.current, ns);
+    const tick = (now: number) => {
+      const dt = Math.min(34, now - last);
+      last = now;
 
-          ensureSaveEnabled();
-        }, isCritical ? 1080 : 900);
+      const speed = moveDir === 1 ? 0.034 : 0.03; // ileri biraz daha güçlü
+      setTamayPos((p) => clamp(p + moveDir * dt * speed, 5, PATH_LEN - 4));
+
+      raf = window.requestAnimationFrame(tick);
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [scene, moveDir, selectedClue]);
+
+  // BEACH camera lag + gait feeling loop
+  useEffect(() => {
+    if (scene !== "BEACH") return;
+
+    let raf = 0;
+    let last = performance.now();
+
+    const tick = (now: number) => {
+      const dt = Math.min(40, now - last);
+      last = now;
+
+      const moving = moveDirRef.current !== 0 && !selectedClueRef.current;
+      const dir = moveDirRef.current;
+
+      setWalkBlend((prev) => {
+        const target = moving ? 1 : 0;
+        const k = moving ? 0.18 : 0.11;
+        return prev + (target - prev) * (1 - Math.exp(-dt * k));
+      });
+
+      setWalkClock((prev) => prev + dt * (moving ? (dir === 1 ? 0.024 : 0.018) : 0.006));
+
+      setCameraPos((prev) => {
+        const tPos = tamayPosRef.current;
+        // hafif ileri bakış + gecikmeli takip
+        const forwardLook = dir === 1 ? 6 : dir === -1 ? -1.5 : 2;
+        const target = clamp(tPos - 18 + forwardLook, 0, PATH_LEN - PATH_VIEW);
+        const lerp = 1 - Math.exp(-dt * 0.08);
+        return prev + (target - prev) * lerp;
+      });
+
+      raf = window.requestAnimationFrame(tick);
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [scene]);
+
+  // keyboard
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (scene !== "BEACH") return;
+
+      const key = e.key.toLowerCase();
+      if ((e.key === "ArrowUp" || key === "w") && !selectedClue) setMoveDir(1);
+      if ((e.key === "ArrowDown" || key === "s") && !selectedClue) setMoveDir(-1);
+
+      if (key === "e") {
+        if (canInspect && interactableObject) {
+          openClue(interactableObject.key);
+        } else if (canEnterTunnel) {
+          startBeachToTunnel();
+        }
       }
-      return next;
-    });
+
+      if (e.key === "Escape" && selectedClue) closeClueModal();
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (scene !== "BEACH") return;
+      const key = e.key.toLowerCase();
+      if (e.key === "ArrowUp" || key === "w" || e.key === "ArrowDown" || key === "s") setMoveDir(0);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [scene, selectedClue, canInspect, interactableObject, canEnterTunnel, openClue, startBeachToTunnel]);
+
+  // all clues -> red light unlock
+  useEffect(() => {
+    if (scene !== "BEACH") return;
+    if (!allCluesFound) return;
+    if (redLightUnlocked) return;
+
+    setRedLightUnlocked(true);
+    setRedLightPhase("SHOW_TEXT");
+    setBeachHint("Yolun sonunda kırmızı ışık güçleniyor. Sanki bir çağrı sinyali...");
+    triggerShake(1);
+
+    addTimeout(() => setBeachHint("Tamay içinden mırıldanır: 'Bu işaret beni oraya çekiyor.'"), 1100);
+    addTimeout(() => {
+      setRedLightPhase("READY");
+      setBeachHint("5/5 hikâye parçası toplandı. İleri git ve tünel girişine gir.");
+      triggerShake(1);
+    }, 2300);
+  }, [scene, allCluesFound, redLightUnlocked, triggerShake, addTimeout]);
+
+  const openClue = useCallback((key: ClueKey) => {
+    if (scene !== "BEACH" || isTransitioning) return;
+    setMoveDir(0);
+    setPuzzleFeedback("");
+    setSelectedClue(key);
+  }, [isTransitioning, scene]);
+
+  const closeClueModal = () => {
+    setSelectedClue(null);
+    setPuzzleFeedback("");
   };
 
-  // ---------- listen/mark helpers ----------
-  const clearHoldTimers = () => {
-    if (holdListenRef.current) window.clearTimeout(holdListenRef.current);
-    if (holdMarkRef.current) window.clearTimeout(holdMarkRef.current);
-    holdListenRef.current = null;
-    holdMarkRef.current = null;
-  };
-
-  const showListenText = (msg: string) => {
-    setListenText(msg);
-    if (listenTimerRef.current) window.clearTimeout(listenTimerRef.current);
-    listenTimerRef.current = window.setTimeout(() => setListenText(null), 1000);
-  };
-
-  const computeListenHint = (doorIndex: number) => {
-    const isSafe = doorIndex === safeDoor;
-    const isCursed = cursedDoor === doorIndex;
-
-    const truthy = Math.random() < (isSafe ? 0.55 : 0.45);
-
-    const goodTR = ["İçerisi… fazla sessiz.", "Nefes sesi yok.", "Boşluk hissi."];
-    const badTR = ["Tırnak… sürtünmesi.", "Islak bir hırıltı.", "Ahşap… inliyor."];
-    const cursedTR = ["Bir şey… seni çağırıyor.", "Soğuk bir fısıltı.", "Yakın… çok yakın."];
-
-    const goodEN = ["Too quiet…", "No breathing.", "A hollow stillness."];
-    const badEN = ["Scratching…", "A wet growl.", "Wood… groaning."];
-    const cursedEN = ["Something… calls you.", "A cold whisper.", "Close… too close."];
-
-    const pick = (arr: string[]) => arr[rand(arr.length)];
-
-    const good = lang === "tr" ? goodTR : goodEN;
-    const bad = lang === "tr" ? badTR : badEN;
-    const cursed = lang === "tr" ? cursedTR : cursedEN;
-
-    const poolBad = isCursed ? cursed : bad;
-
-    if (truthy) {
-      if (isSafe) return pick(good);
-      return pick(poolBad);
-    } else {
-      if (isSafe) return pick(poolBad);
-      return pick(good);
-    }
-  };
-
-  const doListen = (doorIndex: number) => {
-    if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null) return;
-
-    ensureAudioNoPopupSync();
-    window.setTimeout(() => void playCreak(0.45), 0);
-    window.setTimeout(() => void playListenAmbient(520), 0);
-
-    showListenText(computeListenHint(doorIndex));
-  };
-
-  const toggleMark = (doorIndex: number) => {
-    if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null) return;
-
-    setMarks((prev) => {
-      const next = [...prev];
-      next[doorIndex] = !next[doorIndex];
-      return next;
-    });
-
-    suppressClickRef.current = true;
-    triggerPulse(140);
-  };
-
-  // ---------- door handlers ----------
-  const onDoorEnter = (i: number) => {
-    if (phase !== "PLAYING" || screen !== "GAME") return;
-    setHoverDoor(i);
-
-    ensureAudioNoPopupSync();
-    window.setTimeout(() => void playCreak(1), 0);
-  };
-
-  const onDoorLeave = (i: number) => {
-    if (hoverDoor === i) setHoverDoor(null);
-  };
-
-  const onDoorPointerDown = (i: number, e: React.PointerEvent) => {
-    e.stopPropagation();
-
-    if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null) return;
-
-    ensureAudioNoPopupSync();
-
-    suppressClickRef.current = false;
-    clearHoldTimers();
-
-    holdListenRef.current = window.setTimeout(() => {
-      suppressClickRef.current = true;
-      doListen(i);
-    }, 450);
-
-    holdMarkRef.current = window.setTimeout(() => {
-      toggleMark(i);
-    }, 1000);
-  };
-
-  const onDoorPointerUp = (_i: number, e: React.PointerEvent) => {
-    e.stopPropagation();
-    clearHoldTimers();
-  };
-
-  const onPickDoor = (i: number) => {
-    if (phase !== "PLAYING" || screen !== "GAME") return;
-    if (openedDoor !== null) return;
-
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
+  const markClueSolved = (key: ClueKey) => {
+    if (clues[key]) {
+      closeClueModal();
       return;
     }
 
-    ensureAudioNoPopupSync();
-    setOpenedDoor(i);
+    setClues((prev) => ({ ...prev, [key]: true }));
+    setSelectedClue(null);
+    setPuzzleFeedback("");
 
-    window.setTimeout(() => {
-      const isSafe = i === safeDoor;
-      const isCursed = cursedDoor === i;
+    const obj = objectByKey[key];
+    const nextCount = inspectedCount + 1;
+    setBeachHint(`${obj.label} çözüldü (${nextCount}/5). ${obj.shortHint}`);
+  };
 
-      if (isSafe) {
-        triggerWin(i);
+  const startBeachToTunnel = useCallback(() => {
+    if (!canEnterTunnel) return;
+    setBeachHint("Tamay kırmızı ışığın altındaki servis geçidine giriyor...");
+    goWithFade("TUNNEL");
+  }, [canEnterTunnel, goWithFade]);
 
-        setStreak((prev) => {
-          const next = prev + 1;
-          if (next >= 3) {
-            setWard(1);
-            return 0;
-          }
-          return next;
-        });
+  const startDoorGameFromTunnel = () => {
+    if (scene !== "TUNNEL" || isTransitioning) return;
 
-        window.setTimeout(() => {
-          const cur = levelRef.current;
-          if (cur >= MAX_LEVEL) {
-            restartFromCheckpoint();
-            return;
-          }
+    setRoundLayout(createRoundLayout());
+    setSelectedDoor(null);
+    setDoorsRevealed(false);
+    setDoorInputLocked(false);
+    setLastOutcome(null);
+    setDoorHint("Kat 1 — Doğru kapıyı seç.");
 
-          const nl = Math.min(cur + 1, MAX_LEVEL);
-          setLevel(nl);
-          setMaxReachedLevel((prev) => Math.max(prev, nl));
+    goWithFade("DOOR_GAME");
+  };
 
-          startClosingSlow(i);
-          setOpenedDoor(null);
+  const prepareNextRound = (message: string) => {
+    setRoundLayout(createRoundLayout());
+    setSelectedDoor(null);
+    setDoorsRevealed(false);
+    setDoorInputLocked(false);
+    setLastOutcome(null);
+    setDoorHint(message);
+  };
 
-          const ns = rand(DOOR_COUNT);
-          setSafeDoor(ns);
-          startNewRoundTimer(nl, ns);
+  const handleDoorPick = (doorIndex: number) => {
+    if (scene !== "DOOR_GAME") return;
+    if (doorInputLocked || doorsRevealed) return;
 
-          ensureSaveEnabled();
-        }, 820);
+    setDoorInputLocked(true);
+    setSelectedDoor(doorIndex);
+    setDoorsRevealed(true);
 
+    const outcome = getDoorOutcome(doorIndex, roundLayout);
+    setLastOutcome(outcome);
+
+    if (outcome === "SAFE") {
+      setDoorHint("Doğru kapı bulundu.");
+      addTimeout(() => {
+        if (level >= MAX_LEVEL) {
+          setScene("WIN");
+          setDoorInputLocked(false);
+          return;
+        }
+
+        const nextLevel = level + 1;
+        setLevel(nextLevel);
+        if (nextLevel >= CHECKPOINT_LEVEL) setCheckpointUnlocked(true);
+        prepareNextRound(`Kat ${nextLevel} — Doğru kapıyı seç.`);
+      }, 850);
+      return;
+    }
+
+    const damage = outcome === "CURSE" ? 2 : 1;
+    const nextLives = clamp(lives - damage, 0, MAX_LIVES);
+    setLives(nextLives);
+
+    triggerHitPulse(outcome === "CURSE" ? 2 : 1);
+    triggerShake(outcome === "CURSE" ? 2 : 1);
+
+    setDoorHint(outcome === "CURSE" ? "Lanet kapısı. İki can kaybettin." : "Yanlış kapı. İçeride bir şey vardı.");
+
+    addTimeout(() => {
+      if (nextLives <= 0) {
+        setScene("GAME_OVER");
+        setDoorInputLocked(false);
         return;
       }
-
-      setStreak(0);
-
-      const canCritical = difficulty === "hard" && criticalScare;
-      const critChance = canCritical ? 0.28 : 0;
-      const isCritical = Math.random() < critChance;
-
-      const damage = isCursed ? 2 : 1;
-
-      // Monster görseli yok, ama ses/efekt var
-      if (isCritical) {
-        playMonster(1.08);
-        triggerPulse(340);
-        triggerScare(620);
-        triggerCritical();
-      } else {
-        playMonster(1.0);
-        triggerPulse(220);
-        triggerScare(420);
-      }
-
-      applyDamage(damage, isCritical);
-    }, 220);
+      prepareNextRound(`Kat ${level} — Yeniden dene.`);
+    }, 950);
   };
 
-  // ---------- timer tick ----------
-  useEffect(() => {
-    const clearTimer = () => {
-      if (timerInterval.current) {
-        window.clearInterval(timerInterval.current);
-        timerInterval.current = null;
-      }
-    };
-
-    clearTimer();
-
-    const shouldRun = phase === "PLAYING" && screen === "GAME" && !scare;
-    if (!shouldRun) return;
-
-    const step = 100;
-    timerInterval.current = window.setInterval(() => {
-      setTimeLeftMs((prev) => {
-        if (prev <= 0) return 0;
-
-        const next = prev - step;
-        if (next <= 0) {
-          if (timeoutLockRef.current) return 0;
-          timeoutLockRef.current = true;
-
-          clearTimer();
-          triggerPulse(240);
-
-          if (ward > 0) {
-            setWard(0);
-            window.setTimeout(() => {
-              startClosingSlow(openedDoor);
-              setOpenedDoor(null);
-
-              const ns = rand(DOOR_COUNT);
-              setSafeDoor(ns);
-              startNewRoundTimer(levelRef.current, ns);
-            }, 650);
-            return 0;
-          }
-
-          setLives((lprev) => {
-            const lnext = Math.max(0, lprev - 1);
-            if (lnext <= 0) {
-              window.setTimeout(() => setPhase("OUT"), 260);
-            } else {
-              window.setTimeout(() => {
-                startClosingSlow(openedDoor);
-                setOpenedDoor(null);
-
-                const ns = rand(DOOR_COUNT);
-                setSafeDoor(ns);
-                startNewRoundTimer(levelRef.current, ns);
-
-                ensureSaveEnabled();
-              }, 700);
-            }
-            return lnext;
-          });
-
-          return 0;
-        }
-
-        return next;
-      });
-    }, step);
-
-    return clearTimer;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, screen, scare, roundId, difficulty, ward]);
-
-  // cleanup
-  useEffect(() => {
-    return () => {
-      if (listenTimerRef.current) window.clearTimeout(listenTimerRef.current);
-      if (pulseTimer.current) window.clearTimeout(pulseTimer.current);
-      if (scareTimer.current) window.clearTimeout(scareTimer.current);
-      if (winTimer.current) window.clearTimeout(winTimer.current);
-      if (closingTimer.current) window.clearTimeout(closingTimer.current);
-      if (criticalTimer.current) window.clearTimeout(criticalTimer.current);
-
-      try {
-        monsterRef.current?.pause();
-        hbARef.current?.pause();
-        hbBRef.current?.pause();
-      } catch {}
-
-      try {
-        ambientCtxRef.current?.close();
-      } catch {}
-    };
-  }, []);
-
-  // ---------- UI helpers ----------
-  const total = roundTotalMsRef.current || 1;
-  const ratio = clamp(timeLeftMs / total, 0, 1);
-  const beatMs = beatMsRef.current;
-
-  const goNewGame = () => {
-    ensureAudioNoPopupSync();
-    clearSave();
-    restartFromLevel1();
+  const retryToMenu = () => {
+    resetFullGameState();
+    setScene("MENU");
   };
 
-  const goContinue = () => {
-    ensureAudioNoPopupSync();
-    if (!hasSave) return;
-    const ns = rand(DOOR_COUNT);
-    setSafeDoor(ns);
-    startNewRoundTimer(levelRef.current, ns);
-    setOpenedDoor(null);
-    setHoverDoor(null);
-    setScreen("GAME");
+  const retryFromCheckpoint = () => {
+    clearAllTimeouts();
+    setFadeOn(false);
+    setIsTransitioning(false);
+    setMoveDir(0);
+    setHitPulse(0);
+    setShake(0);
+
+    setScene("DOOR_GAME");
+    setLevel(CHECKPOINT_LEVEL);
+    setLives(MAX_LIVES);
+    setCheckpointUnlocked(true);
+    prepareNextRound(`Kat ${CHECKPOINT_LEVEL} — Doğru kapıyı seç.`);
   };
 
-  const onWatchAdGainLives = async () => {
-    if (adLoading) return;
-    ensureAudioNoPopupSync();
-
-    setAdLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setAdLoading(false);
-
-    setPhase("PLAYING");
-    setLives(2);
-
-    startClosingSlow(openedDoor);
-    setOpenedDoor(null);
-
-    const ns = rand(DOOR_COUNT);
-    setSafeDoor(ns);
-    startNewRoundTimer(levelRef.current, ns);
-
-    setScreen("GAME");
-    ensureSaveEnabled();
+  const getDoorClassName = (index: number) => {
+    let cls = "door";
+    if (selectedDoor === index) cls += " selected";
+    if (doorsRevealed) {
+      const outcome = getDoorOutcome(index, roundLayout);
+      if (outcome === "SAFE") cls += " safe";
+      else if (outcome === "CURSE") cls += " curse";
+      else cls += " monster";
+    }
+    return cls;
   };
 
-  const langList = ["tr", "en", "de", "ru", "fr"] as Lang[];
-  const diffList = ["easy", "normal", "hard"] as Difficulty[];
+  const getDoorVisualLabel = (index: number) => {
+    if (!doorsRevealed) return `KAPI ${index + 1}`;
+    const outcome = getDoorOutcome(index, roundLayout);
+    if (outcome === "SAFE") return "DOĞRU";
+    if (outcome === "CURSE") return "LANET";
+    return "YANLIŞ";
+  };
 
-  const doorSrcForIndex = (i: number) => assets.doorImgs[i % assets.doorImgs.length];
+  // ===== BEACH projection (now uses cameraPos, not tamayPos) =====
+  const relToScreen = (worldPos: number, lane: number) => {
+    const rel = worldPos - cameraPos; // camera-based => lag feel
+    const nearBack = -14;
+    const farMax = 150;
+    const normalized = clamp((rel - nearBack) / (farMax - nearBack), 0, 1); // 0 near, 1 far? actually nearBack..far
+    const dist = normalized; // 0 near-ish, 1 far
+    const t = 1 - dist; // near strength
+    const y = 17 + dist * 64; // far => top-ish, near => lower
+    const baseHalfRoad = 6 + dist * 24; // far road wider in projection space (because y mapping inverted visually)
+    const x = 50 + lane * baseHalfRoad * 0.62;
+    const scale = 0.54 + t * 1.2;
+    const opacity = rel < -20 || rel > 158 ? 0 : 0.2 + t * 0.8;
+    const visible = rel > -22 && rel < 158;
+    return { rel, x, y, scale, opacity, visible, dist, t };
+  };
 
-  // ---------- render ----------
-  return (
-    <div
-      className={`app ${pulse ? "pulse" : ""} ${scare ? "scare" : ""} ${winFlash ? "win" : ""} ${
-        critical ? "critical" : ""
-      }`}
-      onPointerDown={() => ensureAudioNoPopupSync()}
-      style={
-        {
-          ["--beat" as any]: `${beatMs}ms`,
-          ["--t" as any]: `${ratio}`,
-        } as React.CSSProperties
-      }
-    >
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Rubik+Wet+Paint&family=UnifrakturCook:wght@700&display=swap');
-        :root{ --bg:#07070c; --text:#f0f0f5; --gold:#b08d24; --goldGlow: rgba(176,141,36,.45); }
-        *{box-sizing:border-box}
-        body{margin:0;background:var(--bg);color:var(--text);font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
-        .app{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:22px;position:relative;overflow:hidden;}
-        .wrap{width:min(980px, 100%); position:relative; z-index:2;}
+  const tunnelProj = relToScreen(TUNNEL_POS, 0);
+  const redLampProj = relToScreen(TUNNEL_POS + 6, 0);
 
-        .centerCard{width:min(680px, 100%);border-radius:22px;border:1px solid rgba(255,255,255,.10);background:rgba(10,10,16,.92);
-          box-shadow:0 30px 140px rgba(0,0,0,.70);padding:22px;backdrop-filter: blur(12px);}
-        .brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0 2px;}
-        .brandTitle{font-family:"Rubik Wet Paint",system-ui;font-size:min(56px, 10vw);letter-spacing:2px;color:var(--gold);
-          text-shadow:0 0 18px rgba(176,141,36,.35), 0 18px 90px rgba(0,0,0,.9);margin:0;line-height:0.95;text-align:center;}
-        .brandSub{font-family:"UnifrakturCook",system-ui;opacity:.85;letter-spacing:1px;margin:0;text-align:center;}
-        .menuBtns{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
-        .btn{width:100%;border:none;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(176,141,36,.92);color:#0b0b10;}
-        .btnGhost{width:100%;border-radius:14px;padding:13px 14px;font-weight:900;cursor:pointer;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.92);}
-        .btnDisabled{opacity:.45;cursor:not-allowed;}
+  // movement feel values
+  const moveStrength = walkBlend;
+  const bob = Math.sin(walkClock) * 3.4 * moveStrength;
+  const stride = Math.cos(walkClock * 0.5) * 1.8 * moveStrength;
+  const tamayLift = (moveDir === 1 ? -10 : moveDir === -1 ? 2 : 0) * moveStrength;
+  const tamayScale = 1 + (moveDir === 1 ? -0.02 : 0.008) * moveStrength;
+  const tamayX = stride * 0.8;
+  const camSwayX = Math.sin(walkClock * 0.45) * 1.2 * moveStrength;
+  const camSwayY = Math.cos(walkClock * 0.9) * 0.8 * moveStrength;
 
-        .hud{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
-        .title{margin:0;font-family:"Rubik Wet Paint",system-ui;font-size:34px;letter-spacing:.5px;line-height:1;opacity:.95;text-shadow:0 10px 40px rgba(0,0,0,.45);}
-        .sub{margin:6px 0 0;color:rgba(255,255,255,.82);font-size:13px;font-family:"UnifrakturCook",system-ui;letter-spacing:.6px;opacity:.92;}
-        .hudRight{display:flex;gap:10px;align-items:center;font-size:13px;flex-wrap:wrap;justify-content:flex-end;}
-        .pill{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);backdrop-filter:blur(6px);
-          color:rgba(255,255,255,.9);font-family:"Creepster",system-ui;letter-spacing:.8px;}
-        .pill b{font-family:ui-sans-serif,system-ui;letter-spacing:0;}
+  const canSolveNote =
+    puzzles.noteSeq.length === 4 &&
+    [2, 4, 1, 3].every((n, i) => puzzles.noteSeq[i] === n);
 
-        .logoBtn{border:none;background:transparent;padding:0;cursor:pointer;text-align:left;}
-        .logoSmall{display:flex;flex-direction:column;}
-        .logoSmall .logoMark{font-family:"Rubik Wet Paint",system-ui;font-size:18px;letter-spacing:1px;color:var(--gold);
-          text-shadow:0 0 14px rgba(176,141,36,.35), 0 18px 60px rgba(0,0,0,.7);}
-        .logoSmall .logoSub{margin-top:2px;font-family:"UnifrakturCook",system-ui;font-size:12px;letter-spacing:.7px;opacity:.8;}
+  const beachObjectsSolvedList = pathObjects.filter((o) => clues[o.key]).map((o) => o.label);
+  const worldShakeClass = shake === 2 ? "shake2" : shake === 1 ? "shake1" : "";
 
-        .pulseWrap{margin:6px 0 14px;display:flex;gap:10px;align-items:center;}
-        .pulseLabel{font-family:"Creepster",system-ui;letter-spacing:.9px;color:rgba(255,255,255,.78);font-size:14px;opacity:.95;transform:translateY(1px);user-select:none;}
-        .ecgBar{flex:1;height:18px;border-radius:999px;background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
-          border:1px solid rgba(255,255,255,.12);overflow:hidden;position:relative;box-shadow:0 10px 40px rgba(0,0,0,.35);}
-        .ecgDim{position:absolute;top:0;right:0;bottom:0;width:calc((1 - var(--t)) * 100%);background:rgba(0,0,0,.52);pointer-events:none;}
-        .ecgViewport{position:absolute;inset:0;overflow:hidden;}
-        .ecgMove{position:absolute;inset:0;width:200%;display:flex;animation:scroll var(--beat) linear infinite;opacity:1;filter:drop-shadow(0 0 10px var(--goldGlow));}
-        .ecgSvg{width:50%;height:100%;}
-        @keyframes scroll{0%{transform:translateX(0%)}100%{transform:translateX(-50%)}}
+  const NOTE_TARGET = [2, 4, 1, 3];
 
-        .corridor{position:relative; width:100%; padding:10px 0 0; user-select:none; touch-action:pan-y;}
-        .track{display:grid; grid-template-columns:repeat(5, 1fr); gap:14px;}
-        @media (max-width: 860px){ .track{grid-template-columns: repeat(3, 1fr)} }
-        @media (max-width: 520px){ .track{grid-template-columns: repeat(2, 1fr)} }
+  const renderPuzzleContent = () => {
+    if (!selectedClue) return null;
+    const meta = objectByKey[selectedClue];
+    const solved = clues[selectedClue];
 
-        .doorBtn{border:none;background:transparent;padding:0;cursor:pointer;}
-        .doorBtn:disabled{cursor:not-allowed;opacity:.65;}
-
-        .doorStage{
-          position:relative;width:100%;height:220px;border-radius:16px;overflow:hidden;
-          box-shadow:0 18px 70px rgba(0,0,0,.45);
-          background:rgba(0,0,0,.25);
-          border:1px solid rgba(255,255,255,.10);
-        }
-        .doorImg{
-          width:100%;height:100%;object-fit:cover;display:block;
-          filter:contrast(1.05) brightness(.92);
-          transform:scale(1.02);
-          transition:transform 200ms ease, filter 200ms ease;
-        }
-        .doorStage.hover .doorImg{transform:scale(1.06);filter:contrast(1.08) brightness(.98);}
-        .doorStage.open .doorImg{transform:scale(1.03);filter:contrast(1.12) brightness(.86);}
-
-        .markBadge{
-          position:absolute; right:10px; top:10px; z-index:7;
-          padding:6px 8px; border-radius:999px;
-          background:rgba(176,141,36,.18);
-          border:1px solid rgba(176,141,36,.45);
-          font-weight:900; font-size:11px; letter-spacing:.6px;
-        }
-
-        .pulse::after{content:"";position:fixed;inset:-20px;background:rgba(0,0,0,.65);animation:pulsefx .22s ease-out forwards;z-index:70;pointer-events:none;}
-        @keyframes pulsefx{0%{opacity:0;transform:scale(1.02)}60%{opacity:1;transform:scale(1.0)}100%{opacity:0;transform:scale(1.0)}}
-
-        .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(0,0,0,.72);z-index:80;}
-        .modal{width:min(520px, 100%);background:rgba(10,10,16,.92);border:1px solid rgba(255,255,255,.10);border-radius:22px;padding:18px;
-          box-shadow:0 30px 140px rgba(0,0,0,.70);backdrop-filter:blur(12px);}
-        .modalTitle{margin:0;font-family:"Creepster",system-ui;font-size:26px;letter-spacing:1px;}
-        .modalInfo{margin:10px 0 14px;color:rgba(255,255,255,.82);font-size:14px;line-height:1.45;}
-        .btnRow{display:flex;flex-direction:column;gap:10px;}
-      `}</style>
-
-      {screen === "MENU" && (
-        <div className="centerCard">
-          <div className="brand">
-            <h1 className="brandTitle">KAPI</h1>
-            <p className="brandSub">{t("menuHint")}</p>
+    if (solved) {
+      return (
+        <div className="puzzleWrap">
+          <div className="puzzleLore">
+            <div className="puzzleLoreTitle">{meta.loreTitle}</div>
+            <div className="puzzleLoreText">{meta.loreText}</div>
           </div>
-
-          <div className="menuBtns">
-            <button className="btn" onClick={goNewGame}>
-              {t("newGame")}
-            </button>
-
-            <button
-              className={`btnGhost ${!hasSave ? "btnDisabled" : ""}`}
-              onClick={goContinue}
-              disabled={!hasSave}
-              title={!hasSave ? t("continueDisabled") : ""}
-            >
-              {t("continue")}
-            </button>
-
-            <button className="btnGhost" onClick={() => setScreen("SETTINGS")}>
-              {t("settings")}
+          <div className="rowEnd">
+            <button className="btn" onClick={closeClueModal} type="button">
+              Kapat
             </button>
           </div>
         </div>
-      )}
+      );
+    }
 
-      {screen === "SETTINGS" && (
-        <div className="centerCard">
-          <div style={{ fontFamily: "Creepster, system-ui", letterSpacing: 1, textAlign: "center", marginTop: 6 }}>
-            {t("settingsTitle")}
-          </div>
-
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 16, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.10)" }}>
-            <div style={{ fontFamily: "Creepster, system-ui", letterSpacing: 1, textAlign: "center", marginBottom: 10 }}>
-              {t("langTitle")}
+    switch (selectedClue) {
+      case "band": {
+        const canSolve = puzzles.bandScrub >= 85;
+        return (
+          <div className="puzzleWrap">
+            <div className="smallText">Tuz ve kiri temizle. Kod görünür hale gelsin.</div>
+            <div className="box">
+              <div className="smallText">Temizlik: %{Math.round(puzzles.bandScrub)}</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={puzzles.bandScrub}
+                onChange={(e) => setPuzzles((p) => ({ ...p, bandScrub: Number(e.target.value) }))}
+              />
             </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-              {langList.map((l) => (
-                <button
-                  key={l}
-                  style={{
-                    minWidth: 72,
-                    borderRadius: 14,
-                    padding: "10px 14px",
-                    border: "1px solid rgba(255,255,255,.16)",
-                    background: lang === l ? "rgba(176,141,36,.92)" : "rgba(0,0,0,.28)",
-                    color: lang === l ? "#0b0b10" : "rgba(255,255,255,.92)",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => setLang(l)}
-                  type="button"
-                >
-                  {langLabel[l]}
+            <div className="smallText">
+              {puzzles.bandScrub < 40 ? "Kirli" : puzzles.bandScrub < 85 ? "Kod seçiliyor..." : "Kod netleşti: D-05"}
+            </div>
+            <div className="rowEnd">
+              <button className="btn" onClick={closeClueModal} type="button">
+                Geri
+              </button>
+              <button className="btn danger" onClick={() => markClueSolved("band")} disabled={!canSolve} type="button">
+                Kaydı Al
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      case "recorder": {
+        const tuned = Math.abs(puzzles.recorderTune - 73) <= 3;
+        const canSolve = tuned && puzzles.recorderChecked;
+        return (
+          <div className="puzzleWrap">
+            <div className="smallText">Frekansı ayarla, sonra Dinle.</div>
+            <div className="box">
+              <div className="smallText">Frekans: {Math.round(puzzles.recorderTune)}</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={puzzles.recorderTune}
+                onChange={(e) =>
+                  setPuzzles((p) => ({
+                    ...p,
+                    recorderTune: Number(e.target.value),
+                    recorderChecked: false,
+                  }))
+                }
+              />
+            </div>
+            <div className="rowEnd">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  setPuzzles((p) => ({ ...p, recorderChecked: true }));
+                  setPuzzleFeedback(tuned ? "Ses kısa süreliğine netleşti." : "Hâlâ cızırtı var.");
+                }}
+              >
+                Dinle
+              </button>
+              <button className="btn" onClick={closeClueModal} type="button">
+                Geri
+              </button>
+              <button className="btn danger" onClick={() => markClueSolved("recorder")} disabled={!canSolve} type="button">
+                Kaydı Al
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      case "note": {
+        const push = (n: number) => {
+          setPuzzles((p) => {
+            const next = [...p.noteSeq, n];
+            const prefixOk = NOTE_TARGET.slice(0, next.length).every((v, i) => v === next[i]);
+            if (!prefixOk) {
+              setPuzzleFeedback("Yanlış sıra. Parçalar dağıldı.");
+              return { ...p, noteSeq: [] };
+            }
+            setPuzzleFeedback("");
+            return { ...p, noteSeq: next };
+          });
+        };
+
+        return (
+          <div className="puzzleWrap">
+            <div className="smallText">Parçaları doğru sırayla hizala. (Yanlışta sıfırlanır)</div>
+            <div className="box smallText">Sıra: {puzzles.noteSeq.length ? puzzles.noteSeq.join(" - ") : "boş"}</div>
+            <div className="grid2">
+              {[1, 2, 3, 4].map((n) => (
+                <button className="btn" key={n} type="button" onClick={() => push(n)} disabled={canSolveNote}>
+                  Parça {n}
                 </button>
               ))}
             </div>
-          </div>
-
-          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <button className="btnGhost" onClick={() => setScreen("MENU")}>
-              {t("back")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {screen === "GAME" && (
-        <div className="wrap">
-          <div className="hud">
-            <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-              <button className="logoBtn" onClick={() => setScreen("MENU")} title="Menü">
-                <div className="logoSmall">
-                  <div className="logoMark">KAPI</div>
-                  <div className="logoSub">{t("menuButton")}</div>
-                </div>
+            <div className="smallText">İpucu: Köşedeki rüzgâr izi, 2. parçayı öne itiyor.</div>
+            <div className="rowEnd">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  setPuzzles((p) => ({ ...p, noteSeq: [] }));
+                  setPuzzleFeedback("");
+                }}
+              >
+                Sıfırla
               </button>
-
-              <div>
-                <h1 className="title">{t("levelTitle", { level })}</h1>
-                <p className="sub">{!audioReady ? t("subtitleNeedAudio") : t("subtitleFindDoor")}</p>
-                <p className="sub" style={{ marginTop: 6, opacity: 0.82 }}>
-                  {t("listenHint")}
-                </p>
-              </div>
-            </div>
-
-            <div className="hudRight">
-              <span className="pill">
-                {t("hudLives")}: <b>{lives}/{MAX_LIVES}</b>
-              </span>
-              <span className="pill">
-                {t("hudWard")}: <b>{ward}</b>
-              </span>
-              <span className="pill">
-                {t("hudCheckpoint")}: <b>{CHECKPOINT_LEVEL}</b>
-              </span>
-              <span className="pill">
-                {t("hudLevel")}: <b>{level}</b>
-              </span>
+              <button className="btn" onClick={closeClueModal} type="button">
+                Geri
+              </button>
+              <button className="btn danger" onClick={() => markClueSolved("note")} disabled={!canSolveNote} type="button">
+                Kaydı Al
+              </button>
             </div>
           </div>
+        );
+      }
 
-          {phase === "PLAYING" && audioReady && (
-            <div className="pulseWrap" aria-label="timer">
-              <div className="pulseLabel">{t("pulseLabel")}</div>
-              <div className="ecgBar">
-                <div className="ecgViewport">
-                  <div className="ecgMove">
-                    <svg className="ecgSvg" viewBox="0 0 200 40" preserveAspectRatio="none">
-                      <path
-                        d="M0 22 L18 22 L24 22 L30 8 L36 36 L42 22 L70 22 L78 22 L86 12 L92 30 L98 22 L126 22 L140 22 L148 6 L156 36 L164 22 L200 22"
-                        fill="none"
-                        stroke="var(--gold)"
-                        strokeWidth="3.2"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <svg className="ecgSvg" viewBox="0 0 200 40" preserveAspectRatio="none">
-                      <path
-                        d="M0 22 L18 22 L24 22 L30 8 L36 36 L42 22 L70 22 L78 22 L86 12 L92 30 L98 22 L126 22 L140 22 L148 6 L156 36 L164 22 L200 22"
-                        fill="none"
-                        stroke="var(--gold)"
-                        strokeWidth="3.2"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                      />
-                    </svg>
+      case "phone": {
+        const canSolve = puzzles.phonePin === "0510";
+
+        const addDigit = (d: string) => {
+          setPuzzles((p) => (p.phonePin.length >= 4 ? p : { ...p, phonePin: p.phonePin + d }));
+          setPuzzleFeedback("");
+        };
+
+        const backspace = () => setPuzzles((p) => ({ ...p, phonePin: p.phonePin.slice(0, -1) }));
+
+        return (
+          <div className="puzzleWrap">
+            <div className="smallText">4 haneli kodu gir. (İpucu: 5. kat + 10 döngü)</div>
+            <div className="pinRow">
+              {(puzzles.phonePin + "____")
+                .slice(0, 4)
+                .split("")
+                .map((ch, i) => (
+                  <div className="pinCell" key={i}>
+                    {ch === "_" ? "•" : ch}
                   </div>
-                </div>
-                <div className="ecgDim" />
+                ))}
+            </div>
+            <div className="grid3">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "⌫"].map((k) => (
+                <button
+                  className="btn"
+                  key={String(k)}
+                  type="button"
+                  onClick={() => {
+                    if (k === "C") {
+                      setPuzzles((p) => ({ ...p, phonePin: "" }));
+                      setPuzzleFeedback("");
+                      return;
+                    }
+                    if (k === "⌫") {
+                      backspace();
+                      return;
+                    }
+                    addDigit(String(k));
+                  }}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            <div className="rowEnd">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setPuzzleFeedback(canSolve ? "Kilit açıldı." : "Kod yanlış.")}
+              >
+                Kontrol Et
+              </button>
+              <button className="btn" onClick={closeClueModal} type="button">
+                Geri
+              </button>
+              <button className="btn danger" onClick={() => markClueSolved("phone")} disabled={!canSolve} type="button">
+                Kaydı Al
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      case "tag": {
+        const canSolve = puzzles.tagUv && puzzles.tagDial === 5;
+        return (
+          <div className="puzzleWrap">
+            <div className="smallText">Kadranı 5’e getir ve UV aç.</div>
+            <div className="box">
+              <div style={{ fontSize: 26, fontWeight: 800, textAlign: "center" }}>{puzzles.tagDial}</div>
+              <div className="grid3">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setPuzzles((p) => ({ ...p, tagDial: (p.tagDial + 9) % 10 }))}
+                >
+                  -1
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setPuzzles((p) => ({ ...p, tagDial: (p.tagDial + 1) % 10 }))}
+                >
+                  +1
+                </button>
+                <button
+                  className={`btn ${puzzles.tagUv ? "danger" : ""}`}
+                  type="button"
+                  onClick={() => setPuzzles((p) => ({ ...p, tagUv: !p.tagUv }))}
+                >
+                  UV {puzzles.tagUv ? "Açık" : "Kapalı"}
+                </button>
               </div>
             </div>
-          )}
+            <div className="smallText">
+              {puzzles.tagUv ? (puzzles.tagDial === 5 ? "Yazı beliriyor..." : "UV var ama hizalama yanlış.") : "UV kapalı"}
+            </div>
+            <div className="rowEnd">
+              <button className="btn" onClick={closeClueModal} type="button">
+                Geri
+              </button>
+              <button className="btn danger" onClick={() => markClueSolved("tag")} disabled={!canSolve} type="button">
+                Kaydı Al
+              </button>
+            </div>
+          </div>
+        );
+      }
+    }
+  };
 
-          <div className="corridor">
-            <div className="track">
-              {Array.from({ length: DOOR_COUNT }).map((_, i) => {
-                const disabled = phase !== "PLAYING";
-                const isHover = hoverDoor === i && openedDoor === null;
-                const isOpen = openedDoor === i;
-                const markOn = marks[i];
+  // Mobile swipe
+  const handleBeachTouchStart = (e: React.TouchEvent) => {
+    if (selectedClue) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    touchYRef.current = e.touches[0]?.clientY ?? null;
+  };
 
-                return (
+  const handleBeachTouchMove = (e: React.TouchEvent) => {
+    if (selectedClue) return;
+    if (touchYRef.current == null) return;
+    const y = e.touches[0]?.clientY ?? touchYRef.current;
+    const delta = y - touchYRef.current;
+    if (Math.abs(delta) < 8) return;
+    setMoveDir(delta < 0 ? 1 : -1); // yukarı kaydır = ileri
+    touchYRef.current = y;
+  };
+
+  const handleBeachTouchEnd = () => {
+    touchYRef.current = null;
+    setMoveDir(0);
+  };
+
+  return (
+    <div className="app">
+      {/* MENU */}
+      {scene === "MENU" && (
+        <div className="menuWrap">
+          <div className="menuBg" />
+          <div className="menuCard panel">
+            <div>
+              <h1 className="title">KORFER: Kapılar</h1>
+              <div className="sub">
+                Tamay sahilde uyanır. Sis, kırmızı ışık ve kapılar onu aynı yere çağırır.
+                Önce denek izlerini topla, sonra 10 katlık kapı düzenini çöz.
+              </div>
+            </div>
+
+            <div className="preview">
+              <div className="red" />
+              <div className="door" />
+            </div>
+
+            <button className="btn danger wide" onClick={startNewRun} type="button">
+              Yeni Oyun
+            </button>
+
+            <div className="muted">
+              Bu sürüm: kamera lag + güçlü yürüme hissi + foreground akış (yol değil Tamay yürüyor hissi için)
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INTRO */}
+      {scene === "INTRO" && (
+        <div className="screen">
+          <main className={`world introStage ${worldShakeClass}`}>
+            <div className="worldSurface">
+              <div className="introArt" />
+              <div className="introFog" />
+              <div
+                style={{
+                  position: "absolute",
+                  top: "20%",
+                  right: "14%",
+                  width: 11,
+                  height: 11,
+                  borderRadius: "50%",
+                  background: "#ff2a2a",
+                  zIndex: 2,
+                  boxShadow: "0 0 12px rgba(255,42,42,.45)",
+                  animation: "blink 1.1s infinite",
+                }}
+              />
+              <div className="introBox">
+                <div className="hintLabel">Giriş</div>
+                <div className="hintText" style={{ minHeight: 40 }}>{introLines[introStep]}</div>
+                <div className="rowEnd">
                   <button
-                    key={i}
-                    className="doorBtn"
-                    disabled={disabled}
-                    onMouseEnter={() => onDoorEnter(i)}
-                    onMouseLeave={() => onDoorLeave(i)}
-                    onPointerDown={(e) => onDoorPointerDown(i, e)}
-                    onPointerUp={(e) => onDoorPointerUp(i, e)}
-                    onPointerCancel={(e) => onDoorPointerUp(i, e)}
-                    onClick={() => onPickDoor(i)}
-                    title="Kapıyı seç"
+                    className="btn"
+                    type="button"
+                    onClick={() => {
+                      if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
+                      else setScene("BEACH");
+                    }}
                   >
-                    <div className={`doorStage ${isHover ? "hover" : ""} ${isOpen ? "open" : ""}`}>
-                      {markOn && <div className="markBadge">{t("mark")}</div>}
-                      <img className="doorImg" src={doorSrcForIndex(i)} alt={`Door ${i + 1}`} />
-                    </div>
+                    {introStep < introLines.length - 1 ? "Devam" : "Sahile Geç"}
                   </button>
-                );
-              })}
+                  {introStep < introLines.length - 1 && (
+                    <button className="btn" type="button" onClick={() => setScene("BEACH")}>
+                      Atla
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <footer className="panel hint">
+            <div className="hintLabel">Not</div>
+            <div className="hintText">
+              Bu versiyonda sahil hareketi “kamera kayması”ndan çıkıp “Tamay yürüyüşü” gibi hissettirmesi için düzenlendi.
+            </div>
+          </footer>
+        </div>
+      )}
+
+      {/* BEACH */}
+      {scene === "BEACH" && (
+        <div className="screen">
+          <header className="panel hud">
+            <div>
+              <div className="hudSub">Sahil Yolu</div>
+              <div className="hudTitle">Arkadan Kamera Keşif</div>
+            </div>
+            <div className="pills">
+              <div className="pill">{inspectedCount}/5 İpucu</div>
+              <div className={`pill ${pathProgressPercent >= 100 ? "good" : ""}`}>Yol %{pathProgressPercent}</div>
+              <div className={`pill ${redLightPhase === "READY" ? "red" : ""}`}>
+                {redLightPhase === "READY" ? "Kırmızı Işık Aktif" : "Işık Pasif"}
+              </div>
+            </div>
+          </header>
+
+          <main
+            className={`world ${worldShakeClass}`}
+            aria-label="Arkadan kamera sahil yürüyüş yolu"
+            onTouchStart={handleBeachTouchStart}
+            onTouchMove={handleBeachTouchMove}
+            onTouchEnd={handleBeachTouchEnd}
+            onTouchCancel={handleBeachTouchEnd}
+          >
+            <div
+              className="worldSurface"
+              style={{
+                transform: `translate(${camSwayX}px, ${camSwayY}px)`,
+              }}
+            >
+              <div
+                className="beachSky"
+                style={{ transform: `translateY(${cameraPos * 0.02}px)` }}
+              />
+              <div
+                className="beachHorizonGlow"
+                style={{ transform: `translateY(${cameraPos * 0.015}px)` }}
+              />
+              <div
+                className="seaBands"
+                style={{ transform: `translateY(${cameraPos * 0.06}px)` }}
+              />
+
+              <div className="beachPerspective">
+                <div
+                  className="walkway"
+                  style={{ transform: `translateX(-50%) rotateX(63deg) translateY(${moveStrength * 2}px)` }}
+                />
+                <div className="walkwayEdgeL" />
+                <div className="walkwayEdgeR" />
+
+                <div
+                  className="horizonRedDot"
+                  style={{
+                    opacity: redLightUnlocked ? 1 : 0.45,
+                    transform: `translateX(-50%) scale(${redLightUnlocked ? 1.1 : 0.9})`,
+                  }}
+                />
+
+                {/* foreground side posts => strong forward motion cue */}
+                {sidePosts.map((post, idx) => {
+                  const p = relToScreen(post.pos, post.lane);
+                  if (!p.visible) return null;
+                  if (p.t < 0.1) return null; // çok uzaksa çizme
+                  const w = Math.max(3, 5 * p.scale);
+                  const h = Math.max(8, (18 + post.heightBias * 5) * p.scale);
+                  const shadowW = Math.max(10, 18 * p.scale);
+
+                  return (
+                    <React.Fragment key={`post-${idx}`}>
+                      <div
+                        className="sidePostShadow"
+                        style={{
+                          left: `${p.x}%`,
+                          top: `${p.y + 2.2}%`,
+                          width: `${shadowW}px`,
+                          height: `${Math.max(4, 7 * p.scale)}px`,
+                          transform: "translate(-50%,-50%)",
+                          opacity: p.opacity * 0.6,
+                        }}
+                      />
+                      <div
+                        className="sidePost"
+                        style={{
+                          left: `${p.x}%`,
+                          top: `${p.y}%`,
+                          width: `${w}px`,
+                          height: `${h}px`,
+                          transform: "translate(-50%,-100%)",
+                          opacity: p.opacity * 0.85,
+                        }}
+                      >
+                        <div
+                          className="sidePostCap"
+                          style={{
+                            top: `${Math.max(-2, -1 * p.scale)}px`,
+                            width: `${Math.max(5, w * 1.8)}px`,
+                            height: `${Math.max(2, 2.2 * p.scale)}px`,
+                            opacity: 0.6,
+                          }}
+                        />
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* tunnel portal */}
+                {tunnelProj.visible && (
+                  <div
+                    className={`tunnelPortalWorld ${redLightUnlocked ? "active" : ""}`}
+                    style={{
+                      left: `${tunnelProj.x}%`,
+                      top: `${tunnelProj.y}%`,
+                      width: `${32 * tunnelProj.scale}px`,
+                      height: `${42 * tunnelProj.scale}px`,
+                      transform: "translate(-50%,-50%)",
+                      opacity: tunnelProj.opacity,
+                    }}
+                  />
+                )}
+
+                {redLampProj.visible && redLightUnlocked && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${redLampProj.x}%`,
+                      top: `${Math.max(12, redLampProj.y - 4)}%`,
+                      width: `${8 * redLampProj.scale}px`,
+                      height: `${8 * redLampProj.scale}px`,
+                      borderRadius: "50%",
+                      background: "#ff2a2a",
+                      boxShadow: "0 0 14px rgba(255,42,42,.45)",
+                      transform: "translate(-50%,-50%)",
+                      zIndex: 9,
+                      opacity: redLampProj.opacity,
+                      animation: "blink 1.1s infinite",
+                    }}
+                  />
+                )}
+
+                {/* path objects */}
+                {pathObjects.map((obj) => {
+                  const p = relToScreen(obj.pos, obj.lane);
+                  if (!p.visible) return null;
+
+                  const isSolved = clues[obj.key];
+                  const isCurrent = interactableObject?.key === obj.key;
+                  const size = 18 * p.scale;
+
+                  return (
+                    <React.Fragment key={obj.key}>
+                      <div
+                        className={`worldMarker ${isSolved ? "solved" : ""} ${isCurrent ? "current" : ""}`}
+                        style={{
+                          left: `${p.x}%`,
+                          top: `${p.y}%`,
+                          width: `${size}px`,
+                          height: `${size}px`,
+                          transform: "translate(-50%,-50%)",
+                          opacity: p.opacity,
+                          fontSize: `${Math.max(9, 9 * p.scale)}px`,
+                        }}
+                      >
+                        {isSolved ? "✓" : obj.icon}
+                      </div>
+                      <div
+                        className="worldMarkerLabel"
+                        style={{
+                          left: `${p.x}%`,
+                          top: `${p.y - 1.2}%`,
+                          opacity: p.opacity,
+                          fontSize: `${Math.max(9, 9.5 * p.scale)}px`,
+                        }}
+                      >
+                        {obj.label}
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              <div
+                className="fogLayer"
+                style={{ transform: `translateX(${cameraPos * 0.03}px)` }}
+              />
+
+              <div className="beachOverlay">
+                <div className="goalBeacon">
+                  <span className="goalDot" />
+                  <span className="goalArrow">↑</span>
+                  <span>{targetHint}</span>
+                </div>
+
+                {canInspect && interactableObject && (
+                  <div className="interactPop">
+                    {interactableObject.label} yakınında — <b>E</b> / İncele
+                  </div>
+                )}
+
+                {canEnterTunnel && (
+                  <div
+                    className="interactPop"
+                    style={{ bottom: 138, borderColor: "rgba(255,60,70,.20)" }}
+                  >
+                    Kırmızı ışık aktif — <b>E</b> / Tünele Gir
+                  </div>
+                )}
+              </div>
+
+              {/* Tamay */}
+              <div
+                className={`tamayRig ${moveDir !== 0 && !selectedClue ? "walking" : ""}`}
+                style={{
+                  transform: `translate(calc(-50% + ${tamayX.toFixed(2)}px), calc(${tamayLift + bob}px)) scale(${tamayScale})`,
+                }}
+              >
+                <div
+                  className="shadow"
+                  style={{
+                    width: `${92 + Math.abs(stride) * 4}px`,
+                    opacity: 0.65 - moveStrength * 0.08,
+                  }}
+                />
+                <div className="legL" />
+                <div className="legR" />
+                <div className="torso" />
+                <div className="shoulderL" />
+                <div className="shoulderR" />
+                <div className="armL" />
+                <div className="armR" />
+                <div className="hood" />
+                <div className="hair" />
+              </div>
+
+              <div className="beachControls">
+                <div className="pad">
+                  <button
+                    className="moveBtn"
+                    type="button"
+                    title="İleri"
+                    onPointerDown={() => !selectedClue && setMoveDir(1)}
+                    onPointerUp={() => setMoveDir(0)}
+                    onPointerLeave={() => setMoveDir(0)}
+                    onPointerCancel={() => setMoveDir(0)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="moveBtn"
+                    type="button"
+                    title="Geri"
+                    onPointerDown={() => !selectedClue && setMoveDir(-1)}
+                    onPointerUp={() => setMoveDir(0)}
+                    onPointerLeave={() => setMoveDir(0)}
+                    onPointerCancel={() => setMoveDir(0)}
+                  >
+                    ↓
+                  </button>
+                </div>
+
+                <div className="beachActionCol">
+                  <div className="miniBadge">Klavye: W/S veya ↑/↓ • E: İncele / Tünel</div>
+                  <div className="miniBadge">Mobil: ↑↓ tuşları veya yukarı/aşağı kaydır</div>
+
+                  {canInspect && interactableObject && (
+                    <button className="btn" type="button" onClick={() => openClue(interactableObject.key)}>
+                      İncele ({interactableObject.label})
+                    </button>
+                  )}
+
+                  {canEnterTunnel && (
+                    <button className="btn danger" type="button" onClick={startBeachToTunnel}>
+                      Tünele Gir
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <footer className="panel hint">
+            <div className="hintLabel">İç Ses</div>
+            <div className="hintText">{beachHint}</div>
+
+            <div className="journalBtnRow">
+              <div className="muted">
+                Toplanan kayıtlar: {beachObjectsSolvedList.length ? beachObjectsSolvedList.join(" • ") : "Henüz yok"}
+              </div>
+              <button className="btn ghost" type="button" onClick={() => setJournalOpen((v) => !v)}>
+                {journalOpen ? "Günlüğü Gizle" : "Günlüğü Aç"}
+              </button>
+            </div>
+
+            {journalOpen && (
+              <>
+                <div className="divider" />
+                <div className="journalGrid">
+                  {pathObjects.map((o) => (
+                    <div className={`journalItem ${clues[o.key] ? "done" : ""}`} key={o.key}>
+                      <div className="journalLabel">{o.icon} {o.label}</div>
+                      <div className="journalState">{clues[o.key] ? "Çözüldü" : "Bulunmadı / Çözülmedi"}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </footer>
+        </div>
+      )}
+
+      {/* TUNNEL */}
+      {scene === "TUNNEL" && (
+        <div className="screen">
+          <header className="panel hud">
+            <div>
+              <div className="hudSub">Geçiş</div>
+              <div className="hudTitle">Servis Tüneli</div>
+            </div>
+            <div className="pills">
+              <div className="pill red">Kırmızı Işık</div>
+              <div className="pill">Tek Kapı</div>
+            </div>
+          </header>
+
+          <main className={`world ${worldShakeClass}`} aria-label="Tünel">
+            <div className="worldSurface">
+              <div className="tunnelBg" />
+              <div className="tunnelPerspective">
+                <div className="wallL" />
+                <div className="wallR" />
+                <div className="tunnelCeil" />
+                <div className="tunnelFloor" />
+                <div className="redLamp" />
+
+                <button className="metalDoor" type="button" onClick={startDoorGameFromTunnel}>
+                  <div className="pill" style={{ background: "rgba(8,11,16,.45)" }}>Metal Kapı</div>
+                </button>
+
+                <div className="tunnelPlayer">
+                  <div className="shoulders" />
+                  <div className="hood" />
+                  <div className="hair" />
+                </div>
+              </div>
+
+              <div className="fogLayer" />
+            </div>
+          </main>
+
+          <footer className="panel hint">
+            <div className="hintLabel">İç Ses</div>
+            <div className="hintText">
+              Beton servis geçidi. Kırmızı ışık burada çağrı işaretinden çok bir göz gibi.
+            </div>
+          </footer>
+        </div>
+      )}
+
+      {/* DOOR GAME */}
+      {scene === "DOOR_GAME" && (
+        <div className="screen">
+          <header className="panel hud">
+            <div>
+              <div className="hudSub">Deneme</div>
+              <div className="hudTitle">Kat {level} / {MAX_LEVEL}</div>
+            </div>
+            <div className="pills">
+              <div className="pill">Can {lives}/{MAX_LIVES}</div>
+              <div className="pill">{checkpointUnlocked ? `Checkpoint: ${CHECKPOINT_LEVEL}` : "Checkpoint Kapalı"}</div>
+            </div>
+          </header>
+
+          <main className={`world ${worldShakeClass}`}>
+            <div className="worldSurface">
+              <div className="gameBg" />
+              <div className="roomPerspective">
+                <div className="roomWallL" />
+                <div className="roomWallR" />
+                <div className="roomBackWall" />
+                <div className="roomFloor" />
+                <div className="fogLayer" />
+
+                <div className="doorsWall">
+                  {Array.from({ length: DOOR_COUNT }).map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={getDoorClassName(i)}
+                      onClick={() => handleDoorPick(i)}
+                      disabled={doorInputLocked}
+                    >
+                      <div className="doorLabel">{getDoorVisualLabel(i)}</div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="playerShoulderOverlay" />
+              </div>
+            </div>
+          </main>
+
+          <footer className="panel hint">
+            <div className="hintLabel">Durum</div>
+            <div className="hintText">{doorHint}</div>
+            <div className="muted">
+              1 doğru kapı • 1 lanet kapı (-2 can) • 3 yanlış kapı (-1 can)
+              {lastOutcome && (
+                <>
+                  {" "}• Son seçim:{" "}
+                  {lastOutcome === "SAFE" ? "Doğru" : lastOutcome === "CURSE" ? "Lanet" : "Yanlış"}
+                </>
+              )}
+            </div>
+          </footer>
+        </div>
+      )}
+
+      {/* GAME OVER */}
+      {scene === "GAME_OVER" && (
+        <div className="centerWrap">
+          <div className="bgBasic" />
+          <div className="centerCard panel">
+            <h2 className="title" style={{ margin: 0 }}>Deneme Sonlandı</h2>
+            <div className="sub">
+              Tamay kapı düzenini çözemedi. Sis geri çekilmiyor. Işık hâlâ çağırıyor.
+            </div>
+            <div className="stats">
+              <div className="stat">
+                <div className="k">Ulaşılan Kat</div>
+                <div className="v">{level}</div>
+              </div>
+              <div className="stat">
+                <div className="k">Checkpoint</div>
+                <div className="v">{checkpointUnlocked ? `Kat ${CHECKPOINT_LEVEL}` : "Yok"}</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {checkpointUnlocked && (
+                <button className="btn danger wide" onClick={retryFromCheckpoint} type="button">
+                  Checkpointten Devam Et
+                </button>
+              )}
+              <button className="btn wide" onClick={retryToMenu} type="button">
+                Ana Menüye Dön
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {listenText && <div style={{
-        position:"fixed", left:"50%", bottom:22, transform:"translateX(-50%)",
-        zIndex:95, pointerEvents:"none", padding:"10px 12px", borderRadius:14,
-        background:"rgba(0,0,0,.55)", border:"1px solid rgba(255,255,255,.14)",
-        backdropFilter:"blur(8px)", fontFamily:"UnifrakturCook, system-ui",
-        letterSpacing:".8px", color:"rgba(255,255,255,.92)",
-        boxShadow:"0 18px 70px rgba(0,0,0,.55)",
-        maxWidth:"min(720px, 92vw)", textAlign:"center"
-      }}>{listenText}</div>}
-
-      {phase === "OUT" && screen === "GAME" && (
-        <div className="overlay">
-          <div className="modal">
-            <h2 className="modalTitle">{t("diedTitle")}</h2>
-            <p className="modalInfo">{t("adText")}</p>
-            <div className="btnRow">
-              <button className="btn" onClick={() => void onWatchAdGainLives()} disabled={adLoading}>
-                {adLoading ? t("adLoading") : t("watchAd")}
+      {/* WIN */}
+      {scene === "WIN" && (
+        <div className="centerWrap">
+          <div className="bgBasic" />
+          <div className="centerCard panel">
+            <h2 className="title" style={{ margin: 0 }}>Hayatta Kaldın</h2>
+            <div className="sub">
+              Onuncu katın kapısı açıldı. Ama koridorun sesi kesilmedi. Bu çıkış mı, yeni bir giriş mi henüz belli değil.
+            </div>
+            <div className="stats">
+              <div className="stat">
+                <div className="k">Tamamlanan Kat</div>
+                <div className="v">{MAX_LEVEL}</div>
+              </div>
+              <div className="stat">
+                <div className="k">Kalan Can</div>
+                <div className="v">{lives}</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <button className="btn danger wide" onClick={startNewRun} type="button">
+                Yeniden Oyna
               </button>
-
-              <button className="btnGhost" onClick={restartFromLevel1} disabled={adLoading}>
-                {t("startLevel1")}
-              </button>
-
-              <button className="btnGhost" onClick={restartFromCheckpoint} disabled={adLoading}>
-                {t("continueCheckpoint")}
+              <button className="btn wide" onClick={retryToMenu} type="button">
+                Ana Menü
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Puzzle Modal */}
+      {selectedClue && (
+        <div className="modalBack" onClick={closeClueModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHead">
+              <div style={{ fontWeight: 800 }}>{objectByKey[selectedClue].label}</div>
+              <button className="btn" onClick={closeClueModal} type="button">
+                Kapat
+              </button>
+            </div>
+            <div className="modalBody">
+              {renderPuzzleContent()}
+              {puzzleFeedback && <div className="feedback">{puzzleFeedback}</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`fade ${fadeOn ? "on" : ""}`} />
+      <div className={`hit ${hitPulse === 1 ? "on1" : hitPulse === 2 ? "on2" : ""}`} />
     </div>
   );
 }
