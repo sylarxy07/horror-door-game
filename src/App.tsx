@@ -16,6 +16,14 @@ import {
 import { introLines, objectByKey, pathObjects, sidePosts } from "./game/data";
 import type { ClueKey, CluesState, DoorOutcome, PathObject, PuzzleState, RoundLayout, Scene } from "./game/types";
 import { clamp, createRoundLayout, getDoorOutcome } from "./game/utils";
+import { BeachScene } from "./scenes/BeachScene";
+import { DoorGameScene } from "./scenes/DoorGameScene";
+import { GameOverScene } from "./scenes/GameOverScene";
+import { IntroScene } from "./scenes/IntroScene";
+import { MenuScene } from "./scenes/MenuScene";
+import { PuzzleModal } from "./scenes/PuzzleModal";
+import { TunnelScene } from "./scenes/TunnelScene";
+import { WinScene } from "./scenes/WinScene";
 import "./game/game.css";
 
 export default function App() {
@@ -804,587 +812,100 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* MENU */}
-      {scene === "MENU" && (
-        <div className="menuWrap">
-          <div className="menuBg" />
-          <div className="menuCard panel">
-            <div>
-              <h1 className="title">KORFER: Kapılar</h1>
-              <div className="sub">
-                Tamay sahilde uyanır. Sis, kırmızı ışık ve kapılar onu aynı yere çağırır.
-                Önce denek izlerini topla, sonra 10 katlık kapı düzenini çöz.
-              </div>
-            </div>
+      {scene === "MENU" && <MenuScene onStart={startNewRun} />}
 
-            <div className="preview">
-              <div className="red" />
-              <div className="door" />
-            </div>
-
-            <button className="btn danger wide" onClick={startNewRun} type="button">
-              Yeni Oyun
-            </button>
-
-            <div className="muted">
-              Bu sürüm: kamera lag + güçlü yürüme hissi + foreground akış (yol değil Tamay yürüyor hissi için)
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* INTRO */}
       {scene === "INTRO" && (
-        <div className="screen">
-          <main className={`world introStage ${worldShakeClass}`}>
-            <div className="worldSurface">
-              <div className="introArt" />
-              <div className="introFog" />
-              <div
-                style={{
-                  position: "absolute",
-                  top: "20%",
-                  right: "14%",
-                  width: 11,
-                  height: 11,
-                  borderRadius: "50%",
-                  background: "#ff2a2a",
-                  zIndex: 2,
-                  boxShadow: "0 0 12px rgba(255,42,42,.45)",
-                  animation: "blink 1.1s infinite",
-                }}
-              />
-              <div className="introBox">
-                <div className="hintLabel">Giriş</div>
-                <div className="hintText" style={{ minHeight: 40 }}>{introLines[introStep]}</div>
-                <div className="rowEnd">
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => {
-                      if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
-                      else setScene("BEACH");
-                    }}
-                  >
-                    {introStep < introLines.length - 1 ? "Devam" : "Sahile Geç"}
-                  </button>
-                  {introStep < introLines.length - 1 && (
-                    <button className="btn" type="button" onClick={() => setScene("BEACH")}>
-                      Atla
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </main>
-
-          <footer className="panel hint">
-            <div className="hintLabel">Not</div>
-            <div className="hintText">
-              Bu versiyonda sahil hareketi “kamera kayması”ndan çıkıp “Tamay yürüyüşü” gibi hissettirmesi için düzenlendi.
-            </div>
-          </footer>
-        </div>
+        <IntroScene
+          worldShakeClass={worldShakeClass}
+          introStep={introStep}
+          introLines={introLines}
+          onAdvance={() => {
+            if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
+            else setScene("BEACH");
+          }}
+          onSkip={() => setScene("BEACH")}
+        />
       )}
 
-      {/* BEACH */}
       {scene === "BEACH" && (
-        <div className="screen">
-          <header className="panel hud">
-            <div>
-              <div className="hudSub">Sahil Yolu</div>
-              <div className="hudTitle">Arkadan Kamera Keşif</div>
-            </div>
-            <div className="pills">
-              <div className="pill">{inspectedCount}/5 İpucu</div>
-              <div className={`pill ${pathProgressPercent >= 100 ? "good" : ""}`}>Yol %{pathProgressPercent}</div>
-              <div className={`pill ${redLightPhase === "READY" ? "red" : ""}`}>
-                {redLightPhase === "READY" ? "Kırmızı Işık Aktif" : "Işık Pasif"}
-              </div>
-            </div>
-          </header>
-
-          <main
-            className={`world ${worldShakeClass}`}
-            aria-label="Arkadan kamera sahil yürüyüş yolu"
-            onTouchStart={handleBeachTouchStart}
-            onTouchMove={handleBeachTouchMove}
-            onTouchEnd={handleBeachTouchEnd}
-            onTouchCancel={handleBeachTouchEnd}
-          >
-            <div
-              className="worldSurface"
-              style={{
-                transform: `translate(${camSwayX}px, ${camSwayY}px)`,
-              }}
-            >
-              <div
-                className="beachSky"
-                style={{ transform: `translateY(${cameraPos * 0.02}px)` }}
-              />
-              <div
-                className="beachHorizonGlow"
-                style={{ transform: `translateY(${cameraPos * 0.015}px)` }}
-              />
-              <div
-                className="seaBands"
-                style={{ transform: `translateY(${cameraPos * 0.06}px)` }}
-              />
-
-              <div className="beachPerspective">
-                <div
-                  className="walkway"
-                  style={{ transform: `translateX(-50%) rotateX(63deg) translateY(${moveStrength * 2}px)` }}
-                />
-                <div className="walkwayEdgeL" />
-                <div className="walkwayEdgeR" />
-
-                <div
-                  className="horizonRedDot"
-                  style={{
-                    opacity: redLightUnlocked ? 1 : 0.45,
-                    transform: `translateX(-50%) scale(${redLightUnlocked ? 1.1 : 0.9})`,
-                  }}
-                />
-
-                {/* foreground side posts => strong forward motion cue */}
-                {sidePosts.map((post, idx) => {
-                  const p = relToScreen(post.pos, post.lane);
-                  if (!p.visible) return null;
-                  if (p.t < 0.1) return null; // çok uzaksa çizme
-                  const w = Math.max(3, 5 * p.scale);
-                  const h = Math.max(8, (18 + post.heightBias * 5) * p.scale);
-                  const shadowW = Math.max(10, 18 * p.scale);
-
-                  return (
-                    <React.Fragment key={`post-${idx}`}>
-                      <div
-                        className="sidePostShadow"
-                        style={{
-                          left: `${p.x}%`,
-                          top: `${p.y + 2.2}%`,
-                          width: `${shadowW}px`,
-                          height: `${Math.max(4, 7 * p.scale)}px`,
-                          transform: "translate(-50%,-50%)",
-                          opacity: p.opacity * 0.6,
-                        }}
-                      />
-                      <div
-                        className="sidePost"
-                        style={{
-                          left: `${p.x}%`,
-                          top: `${p.y}%`,
-                          width: `${w}px`,
-                          height: `${h}px`,
-                          transform: "translate(-50%,-100%)",
-                          opacity: p.opacity * 0.85,
-                        }}
-                      >
-                        <div
-                          className="sidePostCap"
-                          style={{
-                            top: `${Math.max(-2, -1 * p.scale)}px`,
-                            width: `${Math.max(5, w * 1.8)}px`,
-                            height: `${Math.max(2, 2.2 * p.scale)}px`,
-                            opacity: 0.6,
-                          }}
-                        />
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
-
-                {/* tunnel portal */}
-                {tunnelProj.visible && (
-                  <div
-                    className={`tunnelPortalWorld ${redLightUnlocked ? "active" : ""}`}
-                    style={{
-                      left: `${tunnelProj.x}%`,
-                      top: `${tunnelProj.y}%`,
-                      width: `${32 * tunnelProj.scale}px`,
-                      height: `${42 * tunnelProj.scale}px`,
-                      transform: "translate(-50%,-50%)",
-                      opacity: tunnelProj.opacity,
-                    }}
-                  />
-                )}
-
-                {redLampProj.visible && redLightUnlocked && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: `${redLampProj.x}%`,
-                      top: `${Math.max(12, redLampProj.y - 4)}%`,
-                      width: `${8 * redLampProj.scale}px`,
-                      height: `${8 * redLampProj.scale}px`,
-                      borderRadius: "50%",
-                      background: "#ff2a2a",
-                      boxShadow: "0 0 14px rgba(255,42,42,.45)",
-                      transform: "translate(-50%,-50%)",
-                      zIndex: 9,
-                      opacity: redLampProj.opacity,
-                      animation: "blink 1.1s infinite",
-                    }}
-                  />
-                )}
-
-                {/* path objects */}
-                {pathObjects.map((obj) => {
-                  const p = relToScreen(obj.pos, obj.lane);
-                  if (!p.visible) return null;
-
-                  const isSolved = clues[obj.key];
-                  const isCurrent = interactableObject?.key === obj.key;
-                  const size = 18 * p.scale;
-
-                  return (
-                    <React.Fragment key={obj.key}>
-                      <div
-                        className={`worldMarker ${isSolved ? "solved" : ""} ${isCurrent ? "current" : ""}`}
-                        style={{
-                          left: `${p.x}%`,
-                          top: `${p.y}%`,
-                          width: `${size}px`,
-                          height: `${size}px`,
-                          transform: "translate(-50%,-50%)",
-                          opacity: p.opacity,
-                          fontSize: `${Math.max(9, 9 * p.scale)}px`,
-                        }}
-                      >
-                        {isSolved ? "✓" : obj.icon}
-                      </div>
-                      <div
-                        className="worldMarkerLabel"
-                        style={{
-                          left: `${p.x}%`,
-                          top: `${p.y - 1.2}%`,
-                          opacity: p.opacity,
-                          fontSize: `${Math.max(9, 9.5 * p.scale)}px`,
-                        }}
-                      >
-                        {obj.label}
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-
-              <div
-                className="fogLayer"
-                style={{ transform: `translateX(${cameraPos * 0.03}px)` }}
-              />
-
-              <div className="beachOverlay">
-                <div className="goalBeacon">
-                  <span className="goalDot" />
-                  <span className="goalArrow">↑</span>
-                  <span>{targetHint}</span>
-                </div>
-
-                {canInspect && interactableObject && (
-                  <div className="interactPop">
-                    {interactableObject.label} yakınında — <b>E</b> / İncele
-                  </div>
-                )}
-
-                {canEnterTunnel && (
-                  <div
-                    className="interactPop"
-                    style={{ bottom: 138, borderColor: "rgba(255,60,70,.20)" }}
-                  >
-                    Kırmızı ışık aktif — <b>E</b> / Tünele Gir
-                  </div>
-                )}
-              </div>
-
-              {/* Tamay */}
-              <div
-                className={`tamayRig ${moveDir !== 0 && !selectedClue ? "walking" : ""}`}
-                style={{
-                  transform: `translate(calc(-50% + ${tamayX.toFixed(2)}px), calc(${tamayLift + bob}px)) scale(${tamayScale})`,
-                }}
-              >
-                <div
-                  className="shadow"
-                  style={{
-                    width: `${92 + Math.abs(stride) * 4}px`,
-                    opacity: 0.65 - moveStrength * 0.08,
-                  }}
-                />
-                <div className="legL" />
-                <div className="legR" />
-                <div className="torso" />
-                <div className="shoulderL" />
-                <div className="shoulderR" />
-                <div className="armL" />
-                <div className="armR" />
-                <div className="hood" />
-                <div className="hair" />
-              </div>
-
-              <div className="beachControls">
-                <div className="pad">
-                  <button
-                    className="moveBtn"
-                    type="button"
-                    title="İleri"
-                    onPointerDown={() => !selectedClue && setMoveDir(1)}
-                    onPointerUp={() => setMoveDir(0)}
-                    onPointerLeave={() => setMoveDir(0)}
-                    onPointerCancel={() => setMoveDir(0)}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    className="moveBtn"
-                    type="button"
-                    title="Geri"
-                    onPointerDown={() => !selectedClue && setMoveDir(-1)}
-                    onPointerUp={() => setMoveDir(0)}
-                    onPointerLeave={() => setMoveDir(0)}
-                    onPointerCancel={() => setMoveDir(0)}
-                  >
-                    ↓
-                  </button>
-                </div>
-
-                <div className="beachActionCol">
-                  <div className="miniBadge">Klavye: W/S veya ↑/↓ • E: İncele / Tünel</div>
-                  <div className="miniBadge">Mobil: ↑↓ tuşları veya yukarı/aşağı kaydır</div>
-
-                  {canInspect && interactableObject && (
-                    <button className="btn" type="button" onClick={() => openClue(interactableObject.key)}>
-                      İncele ({interactableObject.label})
-                    </button>
-                  )}
-
-                  {canEnterTunnel && (
-                    <button className="btn danger" type="button" onClick={startBeachToTunnel}>
-                      Tünele Gir
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </main>
-
-          <footer className="panel hint">
-            <div className="hintLabel">İç Ses</div>
-            <div className="hintText">{beachHint}</div>
-
-            <div className="journalBtnRow">
-              <div className="muted">
-                Toplanan kayıtlar: {beachObjectsSolvedList.length ? beachObjectsSolvedList.join(" • ") : "Henüz yok"}
-              </div>
-              <button className="btn ghost" type="button" onClick={() => setJournalOpen((v) => !v)}>
-                {journalOpen ? "Günlüğü Gizle" : "Günlüğü Aç"}
-              </button>
-            </div>
-
-            {journalOpen && (
-              <>
-                <div className="divider" />
-                <div className="journalGrid">
-                  {pathObjects.map((o) => (
-                    <div className={`journalItem ${clues[o.key] ? "done" : ""}`} key={o.key}>
-                      <div className="journalLabel">{o.icon} {o.label}</div>
-                      <div className="journalState">{clues[o.key] ? "Çözüldü" : "Bulunmadı / Çözülmedi"}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </footer>
-        </div>
+        <BeachScene
+          worldShakeClass={worldShakeClass}
+          inspectedCount={inspectedCount}
+          pathProgressPercent={pathProgressPercent}
+          redLightPhase={redLightPhase}
+          onTouchStart={handleBeachTouchStart}
+          onTouchMove={handleBeachTouchMove}
+          onTouchEnd={handleBeachTouchEnd}
+          camSwayX={camSwayX}
+          camSwayY={camSwayY}
+          cameraPos={cameraPos}
+          moveStrength={moveStrength}
+          redLightUnlocked={redLightUnlocked}
+          sidePosts={sidePosts}
+          relToScreen={relToScreen}
+          tunnelProj={tunnelProj}
+          redLampProj={redLampProj}
+          clues={clues}
+          interactableObject={interactableObject}
+          targetHint={targetHint}
+          canInspect={canInspect}
+          canEnterTunnel={canEnterTunnel}
+          selectedClue={selectedClue}
+          moveDir={moveDir}
+          tamayX={tamayX}
+          tamayLift={tamayLift}
+          bob={bob}
+          tamayScale={tamayScale}
+          stride={stride}
+          onMoveDir={setMoveDir}
+          onOpenClue={openClue}
+          onEnterTunnel={startBeachToTunnel}
+          beachHint={beachHint}
+          beachObjectsSolvedList={beachObjectsSolvedList}
+          journalOpen={journalOpen}
+          onToggleJournal={() => setJournalOpen((v) => !v)}
+        />
       )}
 
-      {/* TUNNEL */}
-      {scene === "TUNNEL" && (
-        <div className="screen">
-          <header className="panel hud">
-            <div>
-              <div className="hudSub">Geçiş</div>
-              <div className="hudTitle">Servis Tüneli</div>
-            </div>
-            <div className="pills">
-              <div className="pill red">Kırmızı Işık</div>
-              <div className="pill">Tek Kapı</div>
-            </div>
-          </header>
+      {scene === "TUNNEL" && <TunnelScene worldShakeClass={worldShakeClass} onEnterDoorGame={startDoorGameFromTunnel} />}
 
-          <main className={`world ${worldShakeClass}`} aria-label="Tünel">
-            <div className="worldSurface">
-              <div className="tunnelBg" />
-              <div className="tunnelPerspective">
-                <div className="wallL" />
-                <div className="wallR" />
-                <div className="tunnelCeil" />
-                <div className="tunnelFloor" />
-                <div className="redLamp" />
-
-                <button className="metalDoor" type="button" onClick={startDoorGameFromTunnel}>
-                  <div className="pill" style={{ background: "rgba(8,11,16,.45)" }}>Metal Kapı</div>
-                </button>
-
-                <div className="tunnelPlayer">
-                  <div className="shoulders" />
-                  <div className="hood" />
-                  <div className="hair" />
-                </div>
-              </div>
-
-              <div className="fogLayer" />
-            </div>
-          </main>
-
-          <footer className="panel hint">
-            <div className="hintLabel">İç Ses</div>
-            <div className="hintText">
-              Beton servis geçidi. Kırmızı ışık burada çağrı işaretinden çok bir göz gibi.
-            </div>
-          </footer>
-        </div>
-      )}
-
-      {/* DOOR GAME */}
       {scene === "DOOR_GAME" && (
-        <div className="screen">
-          <header className="panel hud">
-            <div>
-              <div className="hudSub">Deneme</div>
-              <div className="hudTitle">Kat {level} / {MAX_LEVEL}</div>
-            </div>
-            <div className="pills">
-              <div className="pill">Can {lives}/{MAX_LIVES}</div>
-              <div className="pill">{checkpointUnlocked ? `Checkpoint: ${CHECKPOINT_LEVEL}` : "Checkpoint Kapalı"}</div>
-            </div>
-          </header>
-
-          <main className={`world ${worldShakeClass}`}>
-            <div className="worldSurface">
-              <div className="gameBg" />
-              <div className="roomPerspective">
-                <div className="roomWallL" />
-                <div className="roomWallR" />
-                <div className="roomBackWall" />
-                <div className="roomFloor" />
-                <div className="fogLayer" />
-
-                <div className="doorsWall">
-                  {Array.from({ length: DOOR_COUNT }).map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className={getDoorClassName(i)}
-                      onClick={() => handleDoorPick(i)}
-                      disabled={doorInputLocked}
-                    >
-                      <div className="doorLabel">{getDoorVisualLabel(i)}</div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="playerShoulderOverlay" />
-              </div>
-            </div>
-          </main>
-
-          <footer className="panel hint">
-            <div className="hintLabel">Durum</div>
-            <div className="hintText">{doorHint}</div>
-            <div className="muted">
-              1 doğru kapı • 1 lanet kapı (-2 can) • 3 yanlış kapı (-1 can)
-              {lastOutcome && (
-                <>
-                  {" "}• Son seçim:{" "}
-                  {lastOutcome === "SAFE" ? "Doğru" : lastOutcome === "CURSE" ? "Lanet" : "Yanlış"}
-                </>
-              )}
-            </div>
-          </footer>
-        </div>
+        <DoorGameScene
+          worldShakeClass={worldShakeClass}
+          level={level}
+          maxLevel={MAX_LEVEL}
+          lives={lives}
+          maxLives={MAX_LIVES}
+          checkpointUnlocked={checkpointUnlocked}
+          checkpointLevel={CHECKPOINT_LEVEL}
+          doorCount={DOOR_COUNT}
+          doorInputLocked={doorInputLocked}
+          getDoorClassName={getDoorClassName}
+          getDoorVisualLabel={getDoorVisualLabel}
+          onDoorPick={handleDoorPick}
+          doorHint={doorHint}
+          lastOutcome={lastOutcome}
+        />
       )}
 
-      {/* GAME OVER */}
       {scene === "GAME_OVER" && (
-        <div className="centerWrap">
-          <div className="bgBasic" />
-          <div className="centerCard panel">
-            <h2 className="title" style={{ margin: 0 }}>Deneme Sonlandı</h2>
-            <div className="sub">
-              Tamay kapı düzenini çözemedi. Sis geri çekilmiyor. Işık hâlâ çağırıyor.
-            </div>
-            <div className="stats">
-              <div className="stat">
-                <div className="k">Ulaşılan Kat</div>
-                <div className="v">{level}</div>
-              </div>
-              <div className="stat">
-                <div className="k">Checkpoint</div>
-                <div className="v">{checkpointUnlocked ? `Kat ${CHECKPOINT_LEVEL}` : "Yok"}</div>
-              </div>
-            </div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {checkpointUnlocked && (
-                <button className="btn danger wide" onClick={retryFromCheckpoint} type="button">
-                  Checkpointten Devam Et
-                </button>
-              )}
-              <button className="btn wide" onClick={retryToMenu} type="button">
-                Ana Menüye Dön
-              </button>
-            </div>
-          </div>
-        </div>
+        <GameOverScene
+          level={level}
+          checkpointUnlocked={checkpointUnlocked}
+          checkpointLevel={CHECKPOINT_LEVEL}
+          onRetryFromCheckpoint={retryFromCheckpoint}
+          onRetryToMenu={retryToMenu}
+        />
       )}
 
-      {/* WIN */}
       {scene === "WIN" && (
-        <div className="centerWrap">
-          <div className="bgBasic" />
-          <div className="centerCard panel">
-            <h2 className="title" style={{ margin: 0 }}>Hayatta Kaldın</h2>
-            <div className="sub">
-              Onuncu katın kapısı açıldı. Ama koridorun sesi kesilmedi. Bu çıkış mı, yeni bir giriş mi henüz belli değil.
-            </div>
-            <div className="stats">
-              <div className="stat">
-                <div className="k">Tamamlanan Kat</div>
-                <div className="v">{MAX_LEVEL}</div>
-              </div>
-              <div className="stat">
-                <div className="k">Kalan Can</div>
-                <div className="v">{lives}</div>
-              </div>
-            </div>
-            <div style={{ display: "grid", gap: 8 }}>
-              <button className="btn danger wide" onClick={startNewRun} type="button">
-                Yeniden Oyna
-              </button>
-              <button className="btn wide" onClick={retryToMenu} type="button">
-                Ana Menü
-              </button>
-            </div>
-          </div>
-        </div>
+        <WinScene maxLevel={MAX_LEVEL} lives={lives} onStartNewRun={startNewRun} onRetryToMenu={retryToMenu} />
       )}
 
-      {/* Puzzle Modal */}
       {selectedClue && (
-        <div className="modalBack" onClick={closeClueModal}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modalHead">
-              <div style={{ fontWeight: 800 }}>{objectByKey[selectedClue].label}</div>
-              <button className="btn" onClick={closeClueModal} type="button">
-                Kapat
-              </button>
-            </div>
-            <div className="modalBody">
-              {renderPuzzleContent()}
-              {puzzleFeedback && <div className="feedback">{puzzleFeedback}</div>}
-            </div>
-          </div>
-        </div>
+        <PuzzleModal clueLabel={objectByKey[selectedClue].label} puzzleFeedback={puzzleFeedback} onClose={closeClueModal}>
+          {renderPuzzleContent()}
+        </PuzzleModal>
       )}
 
       <div className={`fade ${fadeOn ? "on" : ""}`} />
