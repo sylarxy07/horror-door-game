@@ -33,8 +33,22 @@ body{font-family:Inter,system-ui,Arial,sans-serif;color:#eef2fb}
     linear-gradient(to bottom, #141b26, #0f141d 45%, #090c12);
   z-index:0;
 }
-.menuWrap{min-height:100vh;display:grid;place-items:center;padding:14px;position:relative}
-.menuCard{position:relative;z-index:1;width:min(600px,100%);padding:16px;display:grid;gap:12px}
+.menuWrap{min-height:100vh;display:grid;place-items:center;padding:24px 16px;position:relative}
+.menuCard{
+  position:relative;z-index:1;
+  width:min(520px,100%);
+  padding:22px 20px;
+  display:grid;gap:18px;
+}
+.menuContent{display:grid;gap:18px}
+.menuHero{text-align:center}
+.menuLogo{
+  margin:0;
+  font-size:clamp(28px,6.5vw,44px);
+  letter-spacing:.32em;
+  text-transform:uppercase;
+  text-indent:.32em;
+}
 .title{margin:0;font-size:clamp(24px,5vw,34px);line-height:1.05}
 .sub{font-size:14px;line-height:1.45;color:rgba(238,242,251,.78)}
 .preview{height:190px;border:1px solid rgba(255,255,255,.08);border-radius:14px;position:relative;overflow:hidden;background:linear-gradient(to bottom,#253347,#161f2b 48%, #0e141c)}
@@ -45,6 +59,25 @@ body{font-family:Inter,system-ui,Arial,sans-serif;color:#eef2fb}
   animation:fogMove 10s ease-in-out infinite alternate;}
 .preview .red{position:absolute;top:18%;right:14%;width:10px;height:10px;border-radius:50%;background:#ff2a2a;box-shadow:0 0 12px rgba(255,42,42,.45);animation:blink 1.1s infinite}
 .preview .door{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);width:min(58%,220px);height:90px;border-radius:12px 12px 8px 8px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(to bottom,#202734,#121721)}
+.menuSections{display:grid;gap:14px}
+.menuSection{border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(8,11,16,.78);padding:12px 12px 10px;display:grid;gap:8px}
+.menuSectionLabel{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:rgba(238,242,251,.8)}
+.menuSectionBody{display:grid;gap:6px}
+.menuMainButtons{gap:8px}
+.menuMainButton{font-size:15px}
+.settingsHeader{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.settingsTabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.settingsTab{flex:1 1 0;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;color:#eef2fb;text-align:center}
+.settingsTab.active{border-color:rgba(255,70,80,.22);background:rgba(160,20,30,.25)}
+.settingsBody{margin-top:8px;display:grid;gap:10px}
+.settingsGroup{border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);padding:10px;display:grid;gap:10px}
+.settingsField{display:grid;gap:6px}
+.settingsLabel{font-size:12px;font-weight:600}
+.settingsSelect{border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(8,11,16,.9);color:#eef2fb;padding:7px 9px;font-size:13px}
+.settingsCheckboxRow{display:flex;align-items:center;gap:8px;font-size:13px}
+.settingsCheckboxRow input{accent-color:#ff2a2a}
+.settingsHelp{font-size:11px;color:rgba(238,242,251,.7)}
+.settingsFooter{margin-top:2px;font-size:11px}
 .introStage{position:relative;overflow:hidden}
 .introArt{position:absolute;inset:0;background:
   radial-gradient(circle at 70% 20%, rgba(255,42,42,.10), transparent 18%),

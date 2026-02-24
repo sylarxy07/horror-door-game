@@ -297,40 +297,6 @@ export default function App() {
     return () => window.cancelAnimationFrame(raf);
   }, [scene]);
 
-  // keyboard
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (scene !== "BEACH") return;
-
-      const key = e.key.toLowerCase();
-      if ((e.key === "ArrowUp" || key === "w") && !selectedClue) setMoveDir(1);
-      if ((e.key === "ArrowDown" || key === "s") && !selectedClue) setMoveDir(-1);
-
-      if (key === "e") {
-        if (canInspect && interactableObject) {
-          openClue(interactableObject.key);
-        } else if (canEnterTunnel) {
-          startBeachToTunnel();
-        }
-      }
-
-      if (e.key === "Escape" && selectedClue) closeClueModal();
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (scene !== "BEACH") return;
-      const key = e.key.toLowerCase();
-      if (e.key === "ArrowUp" || key === "w" || e.key === "ArrowDown" || key === "s") setMoveDir(0);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-    };
-  }, [scene, selectedClue, canInspect, interactableObject, canEnterTunnel, openClue, startBeachToTunnel]);
-
   // all clues -> red light unlock
   useEffect(() => {
     if (scene !== "BEACH") return;
@@ -382,6 +348,40 @@ export default function App() {
     setBeachHint("Tamay kırmızı ışığın altındaki servis geçidine giriyor...");
     goWithFade("TUNNEL");
   }, [canEnterTunnel, goWithFade]);
+
+  // keyboard
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (scene !== "BEACH") return;
+
+      const key = e.key.toLowerCase();
+      if ((e.key === "ArrowUp" || key === "w") && !selectedClue) setMoveDir(1);
+      if ((e.key === "ArrowDown" || key === "s") && !selectedClue) setMoveDir(-1);
+
+      if (key === "e") {
+        if (canInspect && interactableObject) {
+          openClue(interactableObject.key);
+        } else if (canEnterTunnel) {
+          startBeachToTunnel();
+        }
+      }
+
+      if (e.key === "Escape" && selectedClue) closeClueModal();
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (scene !== "BEACH") return;
+      const key = e.key.toLowerCase();
+      if (e.key === "ArrowUp" || key === "w" || e.key === "ArrowDown" || key === "s") setMoveDir(0);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [scene, selectedClue, canInspect, interactableObject, canEnterTunnel, openClue, startBeachToTunnel]);
 
   const startDoorGameFromTunnel = () => {
     if (scene !== "TUNNEL" || isTransitioning) return;
