@@ -635,15 +635,132 @@ body{font-family:Inter,system-ui,Arial,sans-serif;color:#eef2fb}
   display:grid;place-items:center;
   font-size:11px;font-weight:900;color:#ff4040;
 }
+.introScreen{
+  min-height:100vh;
+  min-height:100dvh;
+  padding:0;
+  gap:0;
+  grid-template-rows:1fr;
+}
+.introScreen .world{
+  min-height:100vh;
+  min-height:100dvh;
+  border:none;
+  border-radius:0;
+}
 .introStage{position:relative;overflow:hidden}
+.introSceneLayer{position:absolute;inset:0;z-index:0}
 .introArt{position:absolute;inset:0;background:
   radial-gradient(circle at 70% 20%, rgba(255,42,42,.10), transparent 18%),
   linear-gradient(to bottom,#202c3b,#121923 50%,#0e1219)}
+.introSceneImage{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center;
+  filter:contrast(1.04) saturate(.96) brightness(.9);
+  will-change:opacity,transform;
+}
+.introSceneImageCurrent{animation:introKenBurns 5.2s ease-out both}
+.introSceneBridge{
+  position:absolute;inset:0;z-index:2;
+  pointer-events:none;
+  background:#000;
+  opacity:0;
+  transition:opacity .12s ease-in-out;
+}
+.introSceneBridge.dark{opacity:.24}
 .introFog{position:absolute;inset:-8%;filter:blur(14px);background:
   radial-gradient(circle at 25% 50%, rgba(235,240,248,.09), transparent 32%),
   radial-gradient(circle at 75% 38%, rgba(235,240,248,.06), transparent 30%);
   animation:fogMove 11s ease-in-out infinite alternate;}
-.introBox{position:absolute;left:12px;right:12px;bottom:12px;z-index:2;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(8,11,16,.72);display:grid;gap:10px}
+.introVignette{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  background:
+    radial-gradient(circle at center, rgba(0,0,0,0) 48%, rgba(0,0,0,.45) 100%),
+    linear-gradient(to top, rgba(5,7,11,.62), rgba(5,7,11,.1) 32%, rgba(5,7,11,.45) 100%);
+}
+.introSignalDot{
+  position:absolute;
+  top:20%;
+  right:14%;
+  width:11px;
+  height:11px;
+  border-radius:50%;
+  background:#ff2a2a;
+  z-index:2;
+  box-shadow:0 0 14px rgba(255,42,42,.55);
+  animation:blink 1.1s infinite;
+}
+.introEyes{
+  position:absolute;
+  top:21.5%;
+  left:50%;
+  width:min(52vw,360px);
+  transform:translateX(-50%);
+  display:flex;
+  justify-content:space-between;
+  pointer-events:none;
+  z-index:2;
+}
+.introEye{
+  width:12px;
+  height:5px;
+  border-radius:999px;
+  background:rgba(255,64,64,.94);
+  opacity:.32;
+  filter:blur(.1px);
+  box-shadow:0 0 14px rgba(255,42,42,.5), 0 0 28px rgba(255,42,42,.18);
+  animation:introEyeBlink 7.1s ease-in-out infinite, introEyeGlow 3.4s ease-in-out infinite, introEyePulse 5.2s ease-in-out infinite;
+}
+.introEyeRight{animation-delay:.34s,.72s,1.1s}
+.introSubtitleArea{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:3;
+  pointer-events:none;
+  padding:0 14px calc(8px + env(safe-area-inset-bottom, 0px));
+  display:grid;
+  justify-items:center;
+  align-items:end;
+  gap:2px;
+  background:linear-gradient(to top, rgba(3,4,8,.74) 0%, rgba(3,4,8,.38) 46%, transparent 100%);
+}
+.introSubtitleText{
+  margin:0;
+  width:min(860px,100%);
+  text-align:center;
+  color:rgba(249,244,237,.96);
+  font-size:clamp(14px,3.6vw,21px);
+  line-height:1.38;
+  letter-spacing:.02em;
+  font-family:"Segoe Script","Lucida Handwriting","Bradley Hand","Comic Sans MS",cursive,Inter,system-ui,sans-serif;
+  text-shadow:0 2px 10px rgba(0,0,0,.72), 0 0 26px rgba(0,0,0,.42);
+  will-change:opacity;
+}
+.introSubtitleTextIn{animation:introSubtitleCrossIn .5s ease-in-out both}
+.introSubtitleTextOut{animation:introSubtitleCrossOut .4s ease-in-out both}
+.introSubtitleEnd{
+  font-size:12px;
+  color:rgba(255,255,255,.52);
+  letter-spacing:.14em;
+}
+.introOutroFade{
+  position:absolute;
+  inset:0;
+  z-index:4;
+  pointer-events:none;
+  background:#000;
+  opacity:0;
+  transition:opacity .92s ease-in-out;
+}
+.introOutroFade.on{opacity:.94}
 .rowEnd{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
 /* BEACH */
@@ -1048,6 +1165,37 @@ body{font-family:Inter,system-ui,Arial,sans-serif;color:#eef2fb}
 .shake1{animation:shake1 .16s linear}
 .shake2{animation:shake2 .28s linear}
 
+@keyframes introKenBurns{
+  from{transform:scale(1.01) translate3d(0,0,0)}
+  to{transform:scale(1.07) translate3d(-1%, -0.5%, 0)}
+}
+@keyframes introSubtitleCrossIn{
+  from{opacity:0}
+  to{opacity:1}
+}
+@keyframes introSubtitleCrossOut{
+  from{opacity:1}
+  to{opacity:0}
+}
+@keyframes introEyeBlink{
+  0%,12%,26%,60%,100%{opacity:.30; transform:scaleY(1)}
+  14%{opacity:.48}
+  15%{opacity:.14; transform:scaleY(.28)}
+  16%{opacity:.46; transform:scaleY(1)}
+  62%{opacity:.42}
+  64%{opacity:.15; transform:scaleY(.4)}
+  66%{opacity:.44; transform:scaleY(1)}
+}
+@keyframes introEyeGlow{
+  0%,100%{box-shadow:0 0 14px rgba(255,42,42,.46), 0 0 28px rgba(255,42,42,.18)}
+  45%{box-shadow:0 0 22px rgba(255,42,42,.65), 0 0 40px rgba(255,42,42,.3)}
+}
+@keyframes introEyePulse{
+  0%,38%,100%{opacity:.32}
+  42%{opacity:.44}
+  45%{opacity:.62}
+  48%{opacity:.38}
+}
 @keyframes blink{
   0%,100%{opacity:.25; box-shadow:0 0 8px rgba(255,42,42,.35)}
   50%{opacity:1; box-shadow:0 0 0 6px rgba(255,42,42,.07),0 0 16px rgba(255,42,42,.5)}
