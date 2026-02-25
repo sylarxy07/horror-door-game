@@ -41,6 +41,8 @@ type BeachSceneProps = {
   targetHint: string;
   canInspect: boolean;
   canEnterTunnel: boolean;
+  canOpenBeachPuzzle: boolean;
+  beachPuzzleStatusLabel: string;
   selectedClue: ClueKey | null;
   moveDir: -1 | 0 | 1;
   tamayX: number;
@@ -50,6 +52,7 @@ type BeachSceneProps = {
   stride: number;
   onMoveDir: (dir: -1 | 0 | 1) => void;
   onOpenClue: (key: ClueKey) => void;
+  onOpenBeachPuzzle: () => void;
   onEnterTunnel: () => void;
   beachHint: string;
   beachObjectsSolvedList: string[];
@@ -79,6 +82,8 @@ export function BeachScene({
   targetHint,
   canInspect,
   canEnterTunnel,
+  canOpenBeachPuzzle,
+  beachPuzzleStatusLabel,
   selectedClue,
   moveDir,
   tamayX,
@@ -88,6 +93,7 @@ export function BeachScene({
   stride,
   onMoveDir,
   onOpenClue,
+  onOpenBeachPuzzle,
   onEnterTunnel,
   beachHint,
   beachObjectsSolvedList,
@@ -104,6 +110,7 @@ export function BeachScene({
         <div className="pills">
           <div className="pill">{inspectedCount}/5 İpucu</div>
           <div className={`pill ${pathProgressPercent >= 100 ? "good" : ""}`}>Yol %{pathProgressPercent}</div>
+          <div className={`pill ${canOpenBeachPuzzle ? "good" : ""}`}>{beachPuzzleStatusLabel}</div>
           <div className={`pill ${redLightPhase === "READY" ? "red" : ""}`}>
             {redLightPhase === "READY" ? "Kırmızı Işık Aktif" : "Işık Pasif"}
           </div>
@@ -341,6 +348,12 @@ export function BeachScene({
               {canInspect && interactableObject && (
                 <button className="btn" type="button" onClick={() => onOpenClue(interactableObject.key)}>
                   İncele ({interactableObject.label})
+                </button>
+              )}
+
+              {canOpenBeachPuzzle && (
+                <button className="btn" type="button" onClick={onOpenBeachPuzzle}>
+                  Sifre Paneli
                 </button>
               )}
 

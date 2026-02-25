@@ -140,13 +140,14 @@ export default function App() {
     !beachPuzzleOpen &&
     !isTransitioning;
 
-  const canEnterTunnel =
+  const canUseTunnelGate =
     scene === "BEACH" &&
-    beachGateUnlocked &&
     !selectedClue &&
     !beachPuzzleOpen &&
     !isTransitioning &&
     tamayPos >= TUNNEL_POS - TUNNEL_ENTER_RADIUS;
+
+  const canEnterTunnel = canUseTunnelGate && beachGateUnlocked;
 
   const pathProgressPercentRaw = Math.round((Math.min(tamayPos, TUNNEL_POS) / TUNNEL_POS) * 100);
   const pathProgressPercent = canEnterTunnel ? 100 : pathProgressPercentRaw;
@@ -173,6 +174,10 @@ export default function App() {
     const distToTunnel = Math.max(0, Math.round(TUNNEL_POS - tamayPos));
     return `Sifre dogrulandi. Tunel ${distToTunnel}m`;
   }, [canEnterTunnel, allCluesFound, beachGateUnlocked, tamayPos, targetHint]);
+
+  const beachPuzzleStatusLabel = allCluesFound
+    ? "Şifre Paneli: Hazır"
+    : "Şifre Paneli: Kilitli (önce 5/5 ipucu)";
 
   const addTimeout = useCallback((fn: () => void, ms: number) => {
     const id = window.setTimeout(fn, ms);
@@ -257,6 +262,11 @@ export default function App() {
     resetFullGameState();
     setScene("INTRO");
   };
+
+  const skipIntro = useCallback(() => {
+    setIntroStep(introLines.length - 1);
+    setScene("BEACH");
+  }, []);
 
   // when BEACH opens, snap camera near player start (only once on entry)
   useEffect(() => {
@@ -444,10 +454,15 @@ export default function App() {
   };
 
   const startBeachToTunnel = useCallback(() => {
-    if (!canEnterTunnel) return;
+    if (!allCluesFound) return;
+    if (!canUseTunnelGate) return;
+    if (!beachGateUnlocked) {
+      openBeachPuzzle();
+      return;
+    }
     setBeachHint("Tamay kırmızı ışığın altındaki servis geçidine giriyor...");
     goWithFade("TUNNEL");
-  }, [canEnterTunnel, goWithFade]);
+  }, [allCluesFound, canUseTunnelGate, beachGateUnlocked, openBeachPuzzle, goWithFade]);
 
   // keyboard
   useEffect(() => {
@@ -461,14 +476,10 @@ export default function App() {
       if (key === "e") {
         if (canInspect && interactableObject) {
           openClue(interactableObject.key);
-        } else if (canEnterTunnel) {
+        } else if (canUseTunnelGate) {
           startBeachToTunnel();
-        } else if (canOpenBeachPuzzle) {
-          openBeachPuzzle();
         }
       }
-
-      if (key === "p" && canOpenBeachPuzzle) openBeachPuzzle();
       if (key === "j") setJournalOpen((prev) => !prev);
 
       if (e.key === "Escape") {
@@ -494,6 +505,7 @@ export default function App() {
     selectedClue,
     beachPuzzleOpen,
     canInspect,
+    canUseTunnelGate,
     canOpenBeachPuzzle,
     interactableObject,
     canEnterTunnel,
@@ -910,11 +922,12 @@ export default function App() {
 
   const renderBeachPuzzleContent = () => (
     <div className="puzzleWrap">
-      <div className="smallText">
-        5 kayittaki rakamlari sahilde buldugun siraya gore gir. Kod uzunlugu: {BEACH_PUZZLE_CODE.length}
-      </div>
+      <div className="smallText">Önce 5 ipucunu topla.</div>
+      <div className="smallText">İpuçlarındaki rakamları doğru sırayla gir.</div>
+      <div className="smallText">Etkileşim: E</div>
+      <div className="smallText">Toplanan ipucu: {inspectedCount}/5</div>
       <div className="box">
-        <div className="smallText">Sifre Girdisi</div>
+        <div className="smallText">Şifre Girdisi</div>
         <div className="pinRow">
           {(beachPuzzleInput + "_".repeat(BEACH_PUZZLE_CODE.length))
             .slice(0, BEACH_PUZZLE_CODE.length)
@@ -927,17 +940,17 @@ export default function App() {
         </div>
       </div>
       <div className="grid3">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "<"].map((key) => (
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, "Temizle", 0, "Sil"].map((key) => (
           <button
             className="btn"
             key={`beach-key-${String(key)}`}
             type="button"
             onClick={() => {
-              if (key === "C") {
+              if (key === "Temizle") {
                 clearBeachPuzzle();
                 return;
               }
-              if (key === "<") {
+              if (key === "Sil") {
                 backspaceBeachPuzzle();
                 return;
               }
@@ -953,7 +966,7 @@ export default function App() {
           Geri
         </button>
         <button className="btn danger" type="button" onClick={submitBeachPuzzle}>
-          Dogrula
+          Onayla
         </button>
       </div>
     </div>
@@ -986,16 +999,34 @@ export default function App() {
       {scene === "MENU" && <MenuScene onStart={startNewRun} />}
 
       {scene === "INTRO" && (
-        <IntroScene
-          worldShakeClass={worldShakeClass}
-          introStep={introStep}
-          introLines={introLines}
-          onAdvance={() => {
-            if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
-            else setScene("BEACH");
-          }}
-          onSkip={() => setScene("BEACH")}
-        />
+        <>
+          <IntroScene
+            worldShakeClass={worldShakeClass}
+            introStep={introStep}
+            introLines={introLines}
+            onAdvance={() => {
+              if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
+              else setScene("BEACH");
+            }}
+            onSkip={skipIntro}
+          />
+          <button
+            className="btn"
+            type="button"
+            onClick={skipIntro}
+            style={{
+              position: "fixed",
+              right: 12,
+              bottom: 16,
+              zIndex: 1200,
+              minWidth: 128,
+              padding: "10px 14px",
+              touchAction: "manipulation",
+            }}
+          >
+            İntroyu Geç
+          </button>
+        </>
       )}
 
       {scene === "BEACH" && (
@@ -1018,9 +1049,11 @@ export default function App() {
           redLampProj={redLampProj}
           clues={clues}
           interactableObject={interactableObject}
-          targetHint={targetHint}
+          targetHint={beachTargetHint}
           canInspect={canInspect}
           canEnterTunnel={canEnterTunnel}
+          canOpenBeachPuzzle={false}
+          beachPuzzleStatusLabel={beachPuzzleStatusLabel}
           selectedClue={selectedClue}
           moveDir={moveDir}
           tamayX={tamayX}
@@ -1030,6 +1063,7 @@ export default function App() {
           stride={stride}
           onMoveDir={setMoveDir}
           onOpenClue={openClue}
+          onOpenBeachPuzzle={openBeachPuzzle}
           onEnterTunnel={startBeachToTunnel}
           beachHint={beachHint}
           beachObjectsSolvedList={beachObjectsSolvedList}
@@ -1076,6 +1110,12 @@ export default function App() {
       {selectedClue && (
         <PuzzleModal clueLabel={objectByKey[selectedClue].label} puzzleFeedback={puzzleFeedback} onClose={closeClueModal}>
           {renderPuzzleContent()}
+        </PuzzleModal>
+      )}
+
+      {beachPuzzleOpen && (
+        <PuzzleModal clueLabel="Sahil Şifre Paneli" puzzleFeedback={beachPuzzleFeedback} onClose={closeBeachPuzzle}>
+          {renderBeachPuzzleContent()}
         </PuzzleModal>
       )}
 
