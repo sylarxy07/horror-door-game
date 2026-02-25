@@ -13,7 +13,7 @@ import {
   TUNNEL_ENTER_RADIUS,
   TUNNEL_POS,
 } from "./game/constants";
-import { introLines, objectByKey, pathObjects, sidePosts } from "./game/data";
+import { BEACH_PUZZLE_CODE, introLines, objectByKey, pathObjects, sidePosts } from "./game/data";
 import type { ClueKey, CluesState, DoorOutcome, PathObject, PuzzleState, RoundLayout, Scene } from "./game/types";
 import { clamp, createRoundLayout, getDoorOutcome } from "./game/utils";
 import { BeachScene } from "./scenes/BeachScene";
@@ -56,6 +56,10 @@ export default function App() {
   // puzzles
   const [puzzles, setPuzzles] = useState<PuzzleState>(INITIAL_PUZZLES);
   const [puzzleFeedback, setPuzzleFeedback] = useState("");
+  const [beachPuzzleOpen, setBeachPuzzleOpen] = useState(false);
+  const [beachPuzzleInput, setBeachPuzzleInput] = useState("");
+  const [beachPuzzleFeedback, setBeachPuzzleFeedback] = useState("");
+  const [beachGateUnlocked, setBeachGateUnlocked] = useState(false);
 
   // TUNNEL / DOOR GAME
   const [level, setLevel] = useState(1);
@@ -76,6 +80,7 @@ export default function App() {
   const tamayPosRef = useRef(tamayPos);
   const moveDirRef = useRef(moveDir);
   const selectedClueRef = useRef<ClueKey | null>(selectedClue);
+  const beachModalLockedRef = useRef(selectedClue !== null || beachPuzzleOpen);
 
   useEffect(() => {
     tamayPosRef.current = tamayPos;
@@ -86,6 +91,9 @@ export default function App() {
   useEffect(() => {
     selectedClueRef.current = selectedClue;
   }, [selectedClue]);
+  useEffect(() => {
+    beachModalLockedRef.current = selectedClue !== null || beachPuzzleOpen;
+  }, [selectedClue, beachPuzzleOpen]);
 
   const inspectedCount = useMemo(() => Object.values(clues).filter(Boolean).length, [clues]);
   const allCluesFound = useMemo(() => Object.values(clues).every(Boolean), [clues]);
@@ -120,13 +128,23 @@ export default function App() {
     scene === "BEACH" &&
     !!interactableObject &&
     !selectedClue &&
+    !beachPuzzleOpen &&
     !clues[interactableObject.key] &&
+    !isTransitioning;
+
+  const canOpenBeachPuzzle =
+    scene === "BEACH" &&
+    allCluesFound &&
+    !beachGateUnlocked &&
+    !selectedClue &&
+    !beachPuzzleOpen &&
     !isTransitioning;
 
   const canEnterTunnel =
     scene === "BEACH" &&
-    redLightPhase === "READY" &&
+    beachGateUnlocked &&
     !selectedClue &&
+    !beachPuzzleOpen &&
     !isTransitioning &&
     tamayPos >= TUNNEL_POS - TUNNEL_ENTER_RADIUS;
 
@@ -147,6 +165,14 @@ export default function App() {
     const distToTunnel = Math.max(0, Math.round(TUNNEL_POS - tamayPos));
     return `Kırmızı ışık aktif. Tünel ${distToTunnel}m`;
   }, [scene, canEnterTunnel, allCluesFound, interactableObject, clues, nextUnsolvedObject, tamayPos]);
+
+  const beachTargetHint = useMemo(() => {
+    if (canEnterTunnel) return "Hedef: Tunel girisine ulas (E)";
+    if (!allCluesFound) return targetHint;
+    if (!beachGateUnlocked) return "5/5 tamamlandi. Sifre panelini ac.";
+    const distToTunnel = Math.max(0, Math.round(TUNNEL_POS - tamayPos));
+    return `Sifre dogrulandi. Tunel ${distToTunnel}m`;
+  }, [canEnterTunnel, allCluesFound, beachGateUnlocked, tamayPos, targetHint]);
 
   const addTimeout = useCallback((fn: () => void, ms: number) => {
     const id = window.setTimeout(fn, ms);
@@ -211,6 +237,10 @@ export default function App() {
 
     setPuzzles(INITIAL_PUZZLES);
     setPuzzleFeedback("");
+    setBeachPuzzleOpen(false);
+    setBeachPuzzleInput("");
+    setBeachPuzzleFeedback("");
+    setBeachGateUnlocked(false);
 
     setLevel(1);
     setLives(MAX_LIVES);
@@ -233,6 +263,7 @@ export default function App() {
     if (scene === "BEACH") {
       setCameraPos(clamp(tamayPosRef.current - 18, 0, PATH_LEN - PATH_VIEW));
       setWalkBlend(0);
+      setBeachPuzzleOpen(false);
     }
   }, [scene]);
 
@@ -240,7 +271,7 @@ export default function App() {
   useEffect(() => {
     if (scene !== "BEACH") return;
     if (moveDir === 0) return;
-    if (selectedClue) return;
+    if (selectedClue || beachPuzzleOpen) return;
 
     let raf = 0;
     let last = performance.now();
@@ -257,7 +288,7 @@ export default function App() {
 
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [scene, moveDir, selectedClue]);
+  }, [scene, moveDir, selectedClue, beachPuzzleOpen]);
 
   // BEACH camera lag + gait feeling loop
   useEffect(() => {
@@ -270,7 +301,7 @@ export default function App() {
       const dt = Math.min(40, now - last);
       last = now;
 
-      const moving = moveDirRef.current !== 0 && !selectedClueRef.current;
+      const moving = moveDirRef.current !== 0 && !beachModalLockedRef.current;
       const dir = moveDirRef.current;
 
       setWalkBlend((prev) => {
@@ -316,9 +347,31 @@ export default function App() {
     }, 2300);
   }, [scene, allCluesFound, redLightUnlocked, triggerShake, addTimeout]);
 
+  useEffect(() => {
+    if (scene !== "BEACH") return;
+    if (!allCluesFound) {
+      setBeachPuzzleOpen(false);
+      setBeachPuzzleInput("");
+      setBeachPuzzleFeedback("");
+      setBeachGateUnlocked(false);
+      return;
+    }
+
+    if (beachGateUnlocked) {
+      setRedLightPhase("READY");
+      return;
+    }
+
+    setRedLightPhase("SHOW_TEXT");
+    if (!beachPuzzleOpen) {
+      setBeachHint("5/5 kayit toplandi. Sifre panelini ac ve gecidi kilitten cikar.");
+    }
+  }, [scene, allCluesFound, beachGateUnlocked, beachPuzzleOpen]);
+
   const openClue = useCallback((key: ClueKey) => {
     if (scene !== "BEACH" || isTransitioning) return;
     setMoveDir(0);
+    setBeachPuzzleOpen(false);
     setPuzzleFeedback("");
     setSelectedClue(key);
   }, [isTransitioning, scene]);
@@ -327,6 +380,19 @@ export default function App() {
     setSelectedClue(null);
     setPuzzleFeedback("");
   };
+
+  const openBeachPuzzle = useCallback(() => {
+    if (!canOpenBeachPuzzle) return;
+    setMoveDir(0);
+    setSelectedClue(null);
+    setBeachPuzzleFeedback("");
+    setBeachPuzzleOpen(true);
+  }, [canOpenBeachPuzzle]);
+
+  const closeBeachPuzzle = useCallback(() => {
+    setBeachPuzzleOpen(false);
+    setBeachPuzzleFeedback("");
+  }, []);
 
   const markClueSolved = (key: ClueKey) => {
     if (clues[key]) {
@@ -343,6 +409,40 @@ export default function App() {
     setBeachHint(`${obj.label} çözüldü (${nextCount}/5). ${obj.shortHint}`);
   };
 
+  const pushBeachDigit = (digit: string) => {
+    if (beachGateUnlocked) return;
+    setBeachPuzzleInput((prev) => (prev.length >= BEACH_PUZZLE_CODE.length ? prev : `${prev}${digit}`));
+    setBeachPuzzleFeedback("");
+  };
+
+  const clearBeachPuzzle = () => {
+    setBeachPuzzleInput("");
+    setBeachPuzzleFeedback("");
+  };
+
+  const backspaceBeachPuzzle = () => {
+    setBeachPuzzleInput((prev) => prev.slice(0, -1));
+    setBeachPuzzleFeedback("");
+  };
+
+  const submitBeachPuzzle = () => {
+    if (beachPuzzleInput.length !== BEACH_PUZZLE_CODE.length) {
+      setBeachPuzzleFeedback("Tum rakamlari gir.");
+      return;
+    }
+
+    if (beachPuzzleInput !== BEACH_PUZZLE_CODE) {
+      setBeachPuzzleFeedback("Kod yanlis. Kayitlari tekrar inceleyebilirsin.");
+      return;
+    }
+
+    setBeachGateUnlocked(true);
+    setBeachPuzzleOpen(false);
+    setBeachPuzzleFeedback("");
+    setBeachHint("Sifre dogrulandi. Kirmizi isik tam guce cikti, tunel acildi.");
+    triggerShake(1);
+  };
+
   const startBeachToTunnel = useCallback(() => {
     if (!canEnterTunnel) return;
     setBeachHint("Tamay kırmızı ışığın altındaki servis geçidine giriyor...");
@@ -355,18 +455,26 @@ export default function App() {
       if (scene !== "BEACH") return;
 
       const key = e.key.toLowerCase();
-      if ((e.key === "ArrowUp" || key === "w") && !selectedClue) setMoveDir(1);
-      if ((e.key === "ArrowDown" || key === "s") && !selectedClue) setMoveDir(-1);
+      if ((e.key === "ArrowUp" || key === "w") && !selectedClue && !beachPuzzleOpen) setMoveDir(1);
+      if ((e.key === "ArrowDown" || key === "s") && !selectedClue && !beachPuzzleOpen) setMoveDir(-1);
 
       if (key === "e") {
         if (canInspect && interactableObject) {
           openClue(interactableObject.key);
         } else if (canEnterTunnel) {
           startBeachToTunnel();
+        } else if (canOpenBeachPuzzle) {
+          openBeachPuzzle();
         }
       }
 
-      if (e.key === "Escape" && selectedClue) closeClueModal();
+      if (key === "p" && canOpenBeachPuzzle) openBeachPuzzle();
+      if (key === "j") setJournalOpen((prev) => !prev);
+
+      if (e.key === "Escape") {
+        if (selectedClue) closeClueModal();
+        if (beachPuzzleOpen) closeBeachPuzzle();
+      }
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
@@ -381,7 +489,19 @@ export default function App() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [scene, selectedClue, canInspect, interactableObject, canEnterTunnel, openClue, startBeachToTunnel]);
+  }, [
+    scene,
+    selectedClue,
+    beachPuzzleOpen,
+    canInspect,
+    canOpenBeachPuzzle,
+    interactableObject,
+    canEnterTunnel,
+    openClue,
+    openBeachPuzzle,
+    closeBeachPuzzle,
+    startBeachToTunnel,
+  ]);
 
   const startDoorGameFromTunnel = () => {
     if (scene !== "TUNNEL" || isTransitioning) return;
@@ -497,11 +617,11 @@ export default function App() {
     const rel = worldPos - cameraPos; // camera-based => lag feel
     const nearBack = -14;
     const farMax = 150;
-    const normalized = clamp((rel - nearBack) / (farMax - nearBack), 0, 1); // 0 near, 1 far? actually nearBack..far
-    const dist = normalized; // 0 near-ish, 1 far
-    const t = 1 - dist; // near strength
-    const y = 17 + dist * 64; // far => top-ish, near => lower
-    const baseHalfRoad = 6 + dist * 24; // far road wider in projection space (because y mapping inverted visually)
+    const normalized = clamp((rel - nearBack) / (farMax - nearBack), 0, 1);
+    const dist = 1 - normalized; // 1 near, 0 far
+    const t = dist; // near strength
+    const y = 17 + dist * 64; // near => lower, far => upper
+    const baseHalfRoad = 6 + dist * 24; // near objects spread more on lane axis
     const x = 50 + lane * baseHalfRoad * 0.62;
     const scale = 0.54 + t * 1.2;
     const opacity = rel < -20 || rel > 158 ? 0 : 0.2 + t * 0.8;
@@ -788,15 +908,66 @@ export default function App() {
     }
   };
 
+  const renderBeachPuzzleContent = () => (
+    <div className="puzzleWrap">
+      <div className="smallText">
+        5 kayittaki rakamlari sahilde buldugun siraya gore gir. Kod uzunlugu: {BEACH_PUZZLE_CODE.length}
+      </div>
+      <div className="box">
+        <div className="smallText">Sifre Girdisi</div>
+        <div className="pinRow">
+          {(beachPuzzleInput + "_".repeat(BEACH_PUZZLE_CODE.length))
+            .slice(0, BEACH_PUZZLE_CODE.length)
+            .split("")
+            .map((ch, idx) => (
+              <div className="pinCell" key={`beach-pin-${idx}`}>
+                {ch === "_" ? "•" : ch}
+              </div>
+            ))}
+        </div>
+      </div>
+      <div className="grid3">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "<"].map((key) => (
+          <button
+            className="btn"
+            key={`beach-key-${String(key)}`}
+            type="button"
+            onClick={() => {
+              if (key === "C") {
+                clearBeachPuzzle();
+                return;
+              }
+              if (key === "<") {
+                backspaceBeachPuzzle();
+                return;
+              }
+              pushBeachDigit(String(key));
+            }}
+          >
+            {key}
+          </button>
+        ))}
+      </div>
+      <div className="rowEnd">
+        <button className="btn" type="button" onClick={closeBeachPuzzle}>
+          Geri
+        </button>
+        <button className="btn danger" type="button" onClick={submitBeachPuzzle}>
+          Dogrula
+        </button>
+      </div>
+    </div>
+  );
+
   // Mobile swipe
   const handleBeachTouchStart = (e: React.TouchEvent) => {
-    if (selectedClue) return;
+    if (selectedClue || beachPuzzleOpen) return;
     if ((e.target as HTMLElement).closest("button")) return;
     touchYRef.current = e.touches[0]?.clientY ?? null;
   };
 
   const handleBeachTouchMove = (e: React.TouchEvent) => {
-    if (selectedClue) return;
+    if (selectedClue || beachPuzzleOpen) return;
     if (touchYRef.current == null) return;
     const y = e.touches[0]?.clientY ?? touchYRef.current;
     const delta = y - touchYRef.current;

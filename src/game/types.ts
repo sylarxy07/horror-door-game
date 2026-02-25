@@ -23,9 +23,12 @@ export type PathObject = {
   key: ClueKey;
   pos: number;
   label: string;
+  artifactType: string;
   shortHint: string;
   loreTitle: string;
   loreText: string;
+  cluePiece: string;
+  clueHint: string;
   icon: string;
   lane: -2 | -1 | 0 | 1 | 2;
 };
