@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getLevelConfig } from "./game/levelConfig";
 import {
   CHECKPOINT_LEVEL,
   DOOR_COUNT,
@@ -1090,6 +1091,7 @@ export default function App() {
           onDoorPick={handleDoorPick}
           doorHint={doorHint}
           lastOutcome={lastOutcome}
+          levelConfig={getLevelConfig(level)}
         />
       )}
 

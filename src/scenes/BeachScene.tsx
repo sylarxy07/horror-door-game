@@ -26,11 +26,11 @@ type BeachClueLayout = {
 };
 
 const BEACH_CLUE_LAYOUT: Record<ClueKey, BeachClueLayout> = {
-  band: { xOffset: -0.34, yProgress: 0.02 },
-  recorder: { xOffset: 0.28, yProgress: 0.27 },
-  note: { xOffset: -0.22, yProgress: 0.52 },
-  phone: { xOffset: 0.33, yProgress: 0.78 },
-  tag: { xOffset: -0.24, yProgress: 0.96 },
+  band:     { xOffset: -0.34, yProgress: 0.02 },
+  recorder: { xOffset:  0.28, yProgress: 2.77 },
+  note:     { xOffset: -0.22, yProgress: 5.52 },
+  phone:    { xOffset:  0.33, yProgress: 8.28 },
+  tag:      { xOffset: -0.24, yProgress: 10.96 },
 };
 
 const BEACH_CLUE_PATH_START = Math.min(...pathObjects.map((obj) => obj.pos));
@@ -40,6 +40,10 @@ const BEACH_CLUE_RENDER_LANE_SCALE = 10.5;
 const BEACH_CLUE_PICKUP_RADIUS = 13.5;
 const BEACH_CLUE_PICKUP_X_RADIUS = 0.08;
 const BEACH_CLUE_PICKUP_Y_RADIUS = 13.5;
+// Hysteresis thresholds: enter with tight values, exit with wider ones
+const X_ENTER = BEACH_CLUE_PICKUP_X_RADIUS;        // 0.08
+const R_ENTER = BEACH_CLUE_PICKUP_RADIUS;           // 13.5
+const R_EXIT  = R_ENTER * 1.26;                    // ~17.0 (widened exit)
 const BEACH_TAMAY_X_MIN = -0.45;
 const BEACH_TAMAY_X_MAX = 0.45;
 const BEACH_TAMAY_X_SPEED = 0.00085;
@@ -127,6 +131,8 @@ export function BeachScene({
   const [tamayWorldX, setTamayWorldX] = useState(0);
   const [xMoveDir, setXMoveDir] = useState<-1 | 0 | 1>(0);
   const xKeyStateRef = useRef({ left: false, right: false });
+  // Sticky active pickup key: enters on narrow threshold, exits on wider threshold
+  const activePickupKeyRef = useRef<ClueKey | null>(null);
 
   const clampTamayWorldX = (value: number) => Math.max(BEACH_TAMAY_X_MIN, Math.min(BEACH_TAMAY_X_MAX, value));
 
@@ -230,30 +236,51 @@ export function BeachScene({
     return { obj, projection, dx, dy, worldDistance };
   });
 
-  let nearestUnsolved: (typeof clueWorldData)[number] | null = null;
-
-  for (const item of clueWorldData) {
-    if (clues[item.obj.key]) continue;
-    if (!nearestUnsolved || item.worldDistance < nearestUnsolved.worldDistance) {
-      nearestUnsolved = item;
+  // --- Hysteresis: exit check first (wider threshold on locked active item) ---
+  if (activePickupKeyRef.current !== null) {
+    const activeData = clueWorldData.find((d) => d.obj.key === activePickupKeyRef.current);
+    if (
+      !activeData ||
+      clues[activePickupKeyRef.current] ||
+      activeData.worldDistance >= R_EXIT
+    ) {
+      activePickupKeyRef.current = null;
     }
   }
 
-  const nearestIsPickable =
-    !!nearestUnsolved &&
-    nearestUnsolved.worldDistance < BEACH_CLUE_PICKUP_RADIUS &&
-    Math.abs(nearestUnsolved.dx) < BEACH_CLUE_PICKUP_X_RADIUS &&
-    Math.abs(nearestUnsolved.dy) < BEACH_CLUE_PICKUP_Y_RADIUS;
+  // --- nearestUnsolved only computed when no key is locked (enter check + hint) ---
+  let nearestUnsolved: (typeof clueWorldData)[number] | null = null;
+  if (activePickupKeyRef.current === null) {
+    for (const item of clueWorldData) {
+      if (clues[item.obj.key]) continue;
+      if (!nearestUnsolved || item.worldDistance < nearestUnsolved.worldDistance) {
+        nearestUnsolved = item;
+      }
+    }
+    // Enter check with tight threshold — only when no key is locked
+    if (
+      nearestUnsolved &&
+      nearestUnsolved.worldDistance < R_ENTER &&
+      Math.abs(nearestUnsolved.dx) < X_ENTER
+    ) {
+      activePickupKeyRef.current = nearestUnsolved.obj.key;
+    }
+  }
 
-  const pickupTargetKey: ClueKey | null = nearestIsPickable && nearestUnsolved ? nearestUnsolved.obj.key : null;
+  const activePickupKey: ClueKey | null = activePickupKeyRef.current;
+  // pickupTargetKey is directly derived from the locked active key
+  const pickupTargetKey: ClueKey | null = activePickupKey;
 
   const beachTargetHint = (() => {
-    if (nearestUnsolved && nearestIsPickable) return `Yakin: ${nearestUnsolved.obj.label} (AL)`;
+    if (activePickupKey !== null) {
+      const activeData = clueWorldData.find((d) => d.obj.key === activePickupKey);
+      return `Yakin: ${activeData?.obj.label ?? ""}`;
+    }
     if (nearestUnsolved) {
-      const dir = nearestUnsolved.dy > 0 ? "ileride" : "geride";
+      const dir = nearestUnsolved.dy > 0 ? "geride" : "ileride";
       return `Sonraki hedef: ${nearestUnsolved.obj.label} (${Math.round(Math.abs(nearestUnsolved.dy))}m, ${dir})`;
     }
-    return targetHint;
+    return "";
   })();
 
   return (
@@ -291,7 +318,7 @@ export function BeachScene({
           <div className="beachHorizonGlow" style={{ transform: `translateY(${cameraPos * 0.015}px)` }} />
           <div className="seaBands" style={{ transform: `translateY(${cameraPos * 0.06}px)` }} />
 
-          <div className="beachPerspective">
+          <div className="beachPerspective" style={{ pointerEvents: "auto" }}>
             <div
               className="walkway"
               style={{ transform: `translateX(-50%) rotateX(63deg) translateY(${moveStrength * 2}px)` }}
@@ -390,10 +417,10 @@ export function BeachScene({
 
               const isSolved = clues[obj.key];
               const isCurrent = !isSolved && nearestUnsolved?.obj.key === obj.key;
-              const canShowPickup = !isSolved && !selectedClue && pickupTargetKey === obj.key;
+              const isPickableThis = activePickupKey === obj.key;
               const size = 18 * p.scale;
-              const pickupLeft = Math.max(7, Math.min(93, p.x + (p.x < 50 ? 4.6 : -4.6)));
-              const pickupTop = Math.max(8, p.y - 4.8);
+              const labelLeftPct = isPickableThis ? Math.max(8, Math.min(92, p.x)) : p.x;
+              const labelTopPct  = isPickableThis ? Math.max(12, Math.min(92, p.y - 1.2)) : p.y - 1.2;
 
               return (
                 <React.Fragment key={obj.key}>
@@ -414,29 +441,40 @@ export function BeachScene({
                   <div
                     className="worldMarkerLabel"
                     style={{
-                      left: `${p.x}%`,
-                      top: `${p.y - 1.2}%`,
+                      left: `${labelLeftPct}%`,
+                      top: `${labelTopPct}%`,
                       opacity: p.opacity,
                       fontSize: `${Math.max(9, 9.5 * p.scale)}px`,
+                      pointerEvents: isPickableThis ? "auto" : "none",
+                      cursor: isPickableThis ? "pointer" : "default",
+                      zIndex: isPickableThis ? 50 : undefined,
+                      touchAction: isPickableThis ? "manipulation" : undefined,
+                      minHeight: isPickableThis ? 36 : undefined,
+                      padding: isPickableThis ? "10px 12px" : undefined,
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isPickableThis) return;
+                      onOpenClue(obj.key);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isPickableThis) return;
+                      onOpenClue(obj.key);
+                    }}
+                    role="button"
+                    tabIndex={isPickableThis ? 0 : -1}
+                    onKeyDown={(e) => {
+                      if (!isPickableThis) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpenClue(obj.key);
+                      }
                     }}
                   >
                     {obj.label}
                   </div>
-                  {canShowPickup && (
-                    <button
-                      className="worldPickBtn"
-                      type="button"
-                      onClick={() => onOpenClue(obj.key)}
-                      style={{
-                        left: `${pickupLeft}%`,
-                        top: `${pickupTop}%`,
-                        opacity: p.opacity,
-                        fontSize: `${Math.max(12, 10.5 * p.scale)}px`,
-                      }}
-                    >
-                      AL
-                    </button>
-                  )}
                 </React.Fragment>
               );
             })}
