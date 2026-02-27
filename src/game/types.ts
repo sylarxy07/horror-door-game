@@ -1,4 +1,4 @@
-export type Scene = "MENU" | "INTRO" | "BEACH" | "TUNNEL" | "DOOR_GAME" | "GAME_OVER" | "WIN";
+export type Scene = "MENU" | "INTRO" | "BEACH" | "BEACH_WORLD" | "TUNNEL" | "DOOR_GAME" | "GAME_OVER" | "WIN";
 
 export type ClueKey = "band" | "recorder" | "note" | "phone" | "tag";
 export type CluesState = Record<ClueKey, boolean>;

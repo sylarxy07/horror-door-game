@@ -88,6 +88,7 @@ type BeachSceneProps = {
   beachObjectsSolvedList: string[];
   journalOpen: boolean;
   onToggleJournal: () => void;
+  onOpenWorld?: () => void;
 };
 
 export function BeachScene({
@@ -127,6 +128,7 @@ export function BeachScene({
   beachObjectsSolvedList,
   journalOpen,
   onToggleJournal,
+  onOpenWorld,
 }: BeachSceneProps) {
   const [tamayWorldX, setTamayWorldX] = useState(0);
   const [xMoveDir, setXMoveDir] = useState<-1 | 0 | 1>(0);
@@ -583,6 +585,12 @@ export function BeachScene({
               {canEnterTunnel && (
                 <button className="btn danger" type="button" onClick={onEnterTunnel}>
                   Tünele Gir
+                </button>
+              )}
+
+              {onOpenWorld && (
+                <button className="btn" type="button" onClick={onOpenWorld}>
+                  🌍 Açık Dünya
                 </button>
               )}
             </div>

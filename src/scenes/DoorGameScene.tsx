@@ -4,13 +4,16 @@ import type { LevelConfig } from "../game/types";
 type DoorGameSceneProps = {
   worldShakeClass: string;
   level: number;
-  maxLevel: number;
+  room: number;
+  roomsPerFloor: number;
   lives: number;
   maxLives: number;
+  corruptionActive: boolean;
   checkpointUnlocked: boolean;
   checkpointLevel: number;
   doorCount: number;
   doorInputLocked: boolean;
+  hitPulseKey: number;
   getDoorClassName: (index: number) => string;
   getDoorVisualLabel: (index: number) => string;
   onDoorPick: (index: number) => void;
@@ -91,13 +94,16 @@ function GlitchOverlay({ amount }: { amount: string }) {
 export function DoorGameScene({
   worldShakeClass,
   level,
-  maxLevel,
+  room,
+  roomsPerFloor,
   lives,
   maxLives,
+  corruptionActive,
   checkpointUnlocked,
   checkpointLevel,
   doorCount,
   doorInputLocked,
+  hitPulseKey,
   getDoorClassName,
   getDoorVisualLabel,
   onDoorPick,
@@ -105,7 +111,7 @@ export function DoorGameScene({
   lastOutcome,
   levelConfig,
 }: DoorGameSceneProps) {
-  const { effects, colors, theme, locationLabel, systemMessage, name } = levelConfig;
+  const { effects, colors, theme, locationLabel, systemMessage } = levelConfig;
 
   const bgStyle = {
     background: `
@@ -123,13 +129,14 @@ export function DoorGameScene({
   };
 
   return (
-    <div className={`screen doorScreen doorScreen--${theme}`}>
+    <div className={`screen doorScreen doorScreen--${theme} ${corruptionActive ? "corruptionActive" : ""}`}>
+      {hitPulseKey > 0 && <div key={hitPulseKey} className="hitPulse" aria-hidden="true" />}
       {/* HUD */}
       <header className="panel hud">
         <div>
           <div className="hudSub">{locationLabel}</div>
           <div className="hudTitle">
-            {name} — {level} / {maxLevel}
+            Kat {level} / Oda {room}/{roomsPerFloor}
           </div>
         </div>
         <div className="pills">
@@ -139,6 +146,7 @@ export function DoorGameScene({
           <div className="pill">
             {checkpointUnlocked ? `✔ KP:${checkpointLevel}` : "KP: Kapalı"}
           </div>
+          {corruptionActive && <div className="pill corruptionPill">Bozulma</div>}
           {effects.glitchAmount !== "none" && (
             <div className="pill red">⚠ ANOMALİ</div>
           )}

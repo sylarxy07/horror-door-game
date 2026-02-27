@@ -18,6 +18,7 @@ import { BEACH_PUZZLE_CODE, introLines, objectByKey, pathObjects, sidePosts } fr
 import type { ClueKey, CluesState, DoorOutcome, PathObject, PuzzleState, RoundLayout, Scene } from "./game/types";
 import { clamp, createRoundLayout, getDoorOutcome } from "./game/utils";
 import { BeachScene } from "./scenes/BeachScene";
+import { BeachWorld } from "./scenes/BeachWorld";
 import { DoorGameScene } from "./scenes/DoorGameScene";
 import { GameOverScene } from "./scenes/GameOverScene";
 import { IntroScene } from "./scenes/IntroScene";
@@ -27,14 +28,21 @@ import { TunnelScene } from "./scenes/TunnelScene";
 import { WinScene } from "./scenes/WinScene";
 import "./game/game.css";
 
+const EPISODE_1_MAX_FLOOR = 5;
+const ROOMS_PER_FLOOR = 3;
+
 export default function App() {
+  const episodeMaxFloor = Math.min(EPISODE_1_MAX_FLOOR, MAX_LEVEL);
+  const devParamEnabled =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("dev") === "1";
+  const devToolsEnabled = import.meta.env.DEV || (devParamEnabled && !import.meta.env.PROD);
+
   const [scene, setScene] = useState<Scene>("MENU");
 
   const [introStep, setIntroStep] = useState(0);
 
   const [fadeOn, setFadeOn] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [hitPulse, setHitPulse] = useState<0 | 1 | 2>(0);
   const [shake, setShake] = useState<0 | 1 | 2>(0);
 
   // BEACH
@@ -64,15 +72,19 @@ export default function App() {
 
   // TUNNEL / DOOR GAME
   const [level, setLevel] = useState(1);
+  const [room, setRoom] = useState(1);
   const [lives, setLives] = useState(MAX_LIVES);
   const [checkpointUnlocked, setCheckpointUnlocked] = useState(false);
+  const [carryoverCurseActive, setCarryoverCurseActive] = useState(false);
+  const [carryoverCursePending, setCarryoverCursePending] = useState(false);
 
   const [roundLayout, setRoundLayout] = useState<RoundLayout>(createRoundLayout());
   const [selectedDoor, setSelectedDoor] = useState<number | null>(null);
-  const [doorsRevealed, setDoorsRevealed] = useState(false);
+  const [selectedDoorOutcome, setSelectedDoorOutcome] = useState<DoorOutcome | null>(null);
   const [doorInputLocked, setDoorInputLocked] = useState(false);
   const [doorHint, setDoorHint] = useState("Doğru kapıyı seç.");
   const [lastOutcome, setLastOutcome] = useState<DoorOutcome | null>(null);
+  const [doorHitPulseKey, setDoorHitPulseKey] = useState(0);
 
   const timeoutRefs = useRef<number[]>([]);
   const touchYRef = useRef<number | null>(null);
@@ -195,9 +207,13 @@ export default function App() {
     return () => clearAllTimeouts();
   }, [clearAllTimeouts]);
 
-  const triggerHitPulse = useCallback((strength: 1 | 2) => {
-    setHitPulse(strength);
-    addTimeout(() => setHitPulse(0), strength === 2 ? 360 : 240);
+  const triggerDoorHitPulse = useCallback((pulseCount: 1 | 2) => {
+    setDoorHitPulseKey((prev) => prev + 1);
+    if (pulseCount === 2) {
+      addTimeout(() => {
+        setDoorHitPulseKey((prev) => prev + 1);
+      }, 140);
+    }
   }, [addTimeout]);
 
   const triggerShake = useCallback((strength: 1 | 2) => {
@@ -226,7 +242,6 @@ export default function App() {
 
     setFadeOn(false);
     setIsTransitioning(false);
-    setHitPulse(0);
     setShake(0);
 
     setClues(INITIAL_CLUES);
@@ -249,13 +264,17 @@ export default function App() {
     setBeachGateUnlocked(false);
 
     setLevel(1);
+    setRoom(1);
     setLives(MAX_LIVES);
     setCheckpointUnlocked(false);
+    setCarryoverCurseActive(false);
+    setCarryoverCursePending(false);
     setRoundLayout(createRoundLayout());
     setSelectedDoor(null);
-    setDoorsRevealed(false);
+    setSelectedDoorOutcome(null);
+    setDoorHitPulseKey(0);
     setDoorInputLocked(false);
-    setDoorHint("Doğru kapıyı seç.");
+    setDoorHint("Kat 1 / Oda 1/3 — Doğru kapıyı seç.");
     setLastOutcome(null);
   };
 
@@ -266,8 +285,67 @@ export default function App() {
 
   const skipIntro = useCallback(() => {
     setIntroStep(introLines.length - 1);
-    setScene("BEACH");
+    setScene("BEACH_WORLD");
   }, []);
+
+  const jumpToBeachWorld = useCallback(() => {
+    clearAllTimeouts();
+    setFadeOn(false);
+    setIsTransitioning(false);
+    setMoveDir(0);
+    setScene("BEACH_WORLD");
+  }, [clearAllTimeouts]);
+
+  const jumpToTunnel = useCallback(() => {
+    clearAllTimeouts();
+    setFadeOn(false);
+    setIsTransitioning(false);
+    setMoveDir(0);
+    setScene("TUNNEL");
+  }, [clearAllTimeouts]);
+
+  const jumpToDoorGame = useCallback(() => {
+    clearAllTimeouts();
+    setFadeOn(false);
+    setIsTransitioning(false);
+    setMoveDir(0);
+    setLevel(1);
+    setRoom(1);
+    setLives(MAX_LIVES);
+    setCheckpointUnlocked(false);
+    setCarryoverCurseActive(false);
+    setCarryoverCursePending(false);
+    setRoundLayout(createRoundLayout());
+    setSelectedDoor(null);
+    setSelectedDoorOutcome(null);
+    setDoorHitPulseKey(0);
+    setDoorInputLocked(false);
+    setLastOutcome(null);
+    setDoorHint("Kat 1 / Oda 1/3 — Doğru kapıyı seç.");
+    setScene("DOOR_GAME");
+  }, [clearAllTimeouts]);
+
+  useEffect(() => {
+    if (!devToolsEnabled) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+
+      if (event.code === "F1") {
+        event.preventDefault();
+        jumpToBeachWorld();
+      } else if (event.code === "F2") {
+        event.preventDefault();
+        jumpToTunnel();
+      } else if (event.code === "F3") {
+        event.preventDefault();
+        jumpToDoorGame();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [devToolsEnabled, jumpToBeachWorld, jumpToDoorGame, jumpToTunnel]);
 
   // when BEACH opens, snap camera near player start (only once on entry)
   useEffect(() => {
@@ -519,20 +597,28 @@ export default function App() {
   const startDoorGameFromTunnel = () => {
     if (scene !== "TUNNEL" || isTransitioning) return;
 
+    setLevel(1);
+    setRoom(1);
+    setLives(MAX_LIVES);
+    setCheckpointUnlocked(false);
+    setCarryoverCurseActive(false);
+    setCarryoverCursePending(false);
     setRoundLayout(createRoundLayout());
     setSelectedDoor(null);
-    setDoorsRevealed(false);
+    setSelectedDoorOutcome(null);
+    setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
-    setDoorHint("Kat 1 — Doğru kapıyı seç.");
+    setDoorHint("Kat 1 / Oda 1/3 — Doğru kapıyı seç.");
 
     goWithFade("DOOR_GAME");
   };
 
-  const prepareNextRound = (message: string) => {
+  const prepareNextRoom = (message: string) => {
     setRoundLayout(createRoundLayout());
     setSelectedDoor(null);
-    setDoorsRevealed(false);
+    setSelectedDoorOutcome(null);
+    setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
     setDoorHint(message);
@@ -540,40 +626,64 @@ export default function App() {
 
   const handleDoorPick = (doorIndex: number) => {
     if (scene !== "DOOR_GAME") return;
-    if (doorInputLocked || doorsRevealed) return;
+    if (doorInputLocked) return;
 
     setDoorInputLocked(true);
     setSelectedDoor(doorIndex);
-    setDoorsRevealed(true);
 
     const outcome = getDoorOutcome(doorIndex, roundLayout);
+    setSelectedDoorOutcome(outcome);
     setLastOutcome(outcome);
 
     if (outcome === "SAFE") {
-      setDoorHint("Doğru kapı bulundu.");
-      addTimeout(() => {
-        if (level >= MAX_LEVEL) {
-          setScene("WIN");
-          setDoorInputLocked(false);
-          return;
-        }
+      const clearsFloor = room >= ROOMS_PER_FLOOR;
+      const clearsEpisode = clearsFloor && level >= episodeMaxFloor;
 
-        const nextLevel = level + 1;
+      if (clearsEpisode) {
+        setDoorHint("Kat 5 tamamlandı. Asansör hattı açılıyor.");
+        addTimeout(() => {
+          setDoorInputLocked(false);
+          setScene("WIN");
+        }, 900);
+        return;
+      }
+
+      const nextLevel = clearsFloor ? level + 1 : level;
+      const nextRoom = clearsFloor ? 1 : room + 1;
+
+      setDoorHint(
+        clearsFloor
+          ? `Kat ${nextLevel} açıldı. Oda 1/3 başlıyor.`
+          : `Doğru kapı. Oda ${nextRoom}/3 açıldı.`
+      );
+
+      addTimeout(() => {
         setLevel(nextLevel);
+        setRoom(nextRoom);
         if (nextLevel >= CHECKPOINT_LEVEL) setCheckpointUnlocked(true);
-        prepareNextRound(`Kat ${nextLevel} — Doğru kapıyı seç.`);
+        setCarryoverCurseActive(carryoverCursePending);
+        setCarryoverCursePending(false);
+        prepareNextRoom(`Kat ${nextLevel} / Oda ${nextRoom}/3 — Doğru kapıyı seç.`);
       }, 850);
       return;
     }
 
     const damage = outcome === "CURSE" ? 2 : 1;
+    if (outcome === "CURSE") setCarryoverCursePending(true);
     const nextLives = clamp(lives - damage, 0, MAX_LIVES);
     setLives(nextLives);
 
-    triggerHitPulse(outcome === "CURSE" ? 2 : 1);
+    triggerDoorHitPulse(outcome === "CURSE" ? 2 : 1);
     triggerShake(outcome === "CURSE" ? 2 : 1);
 
-    setDoorHint(outcome === "CURSE" ? "Lanet kapısı. İki can kaybettin." : "Yanlış kapı. İçeride bir şey vardı.");
+    setDoorHint(
+      outcome === "CURSE"
+        ? "Lanet kapısı. İki can kaybettin. Sonraki odada bozulma taşınacak."
+        : "Yanlış kapı. Bir can kaybettin."
+    );
+
+    // Wrong pick always rerolls this room immediately.
+    setRoundLayout(createRoundLayout());
 
     addTimeout(() => {
       if (nextLives <= 0) {
@@ -581,7 +691,11 @@ export default function App() {
         setDoorInputLocked(false);
         return;
       }
-      prepareNextRound(`Kat ${level} — Yeniden dene.`);
+      setSelectedDoor(null);
+      setSelectedDoorOutcome(null);
+      setDoorHitPulseKey(0);
+      setDoorInputLocked(false);
+      setDoorHint(`Kat ${level} / Oda ${room}/3 — Yeniden dene.`);
     }, 950);
   };
 
@@ -595,34 +709,36 @@ export default function App() {
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
-    setHitPulse(0);
     setShake(0);
 
     setScene("DOOR_GAME");
     setLevel(CHECKPOINT_LEVEL);
+    setRoom(1);
     setLives(MAX_LIVES);
     setCheckpointUnlocked(true);
-    prepareNextRound(`Kat ${CHECKPOINT_LEVEL} — Doğru kapıyı seç.`);
+    setCarryoverCurseActive(false);
+    setCarryoverCursePending(false);
+    setDoorHitPulseKey(0);
+    prepareNextRoom(`Kat ${CHECKPOINT_LEVEL} / Oda 1/3 — Doğru kapıyı seç.`);
   };
 
   const getDoorClassName = (index: number) => {
     let cls = "door";
     if (selectedDoor === index) cls += " selected";
-    if (doorsRevealed) {
-      const outcome = getDoorOutcome(index, roundLayout);
-      if (outcome === "SAFE") cls += " safe";
-      else if (outcome === "CURSE") cls += " curse";
+    if (carryoverCurseActive) cls += " corruption";
+    if (selectedDoor === index && selectedDoorOutcome) {
+      if (selectedDoorOutcome === "SAFE") cls += " safe";
+      else if (selectedDoorOutcome === "CURSE") cls += " curse";
       else cls += " monster";
     }
     return cls;
   };
 
   const getDoorVisualLabel = (index: number) => {
-    if (!doorsRevealed) return `KAPI ${index + 1}`;
-    const outcome = getDoorOutcome(index, roundLayout);
-    if (outcome === "SAFE") return "DOĞRU";
-    if (outcome === "CURSE") return "LANET";
-    return "YANLIŞ";
+    if (selectedDoor !== index || !selectedDoorOutcome) return `KAPI ${index + 1}`;
+    if (selectedDoorOutcome === "SAFE") return "DOĞRU";
+    if (selectedDoorOutcome === "CURSE") return "LANET";
+    return "YARATIK";
   };
 
   // ===== BEACH projection (now uses cameraPos, not tamayPos) =====
@@ -1007,7 +1123,7 @@ export default function App() {
             introLines={introLines}
             onAdvance={() => {
               if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
-              else setScene("BEACH");
+              else setScene("BEACH_WORLD");
             }}
             onSkip={skipIntro}
           />
@@ -1070,22 +1186,42 @@ export default function App() {
           beachObjectsSolvedList={beachObjectsSolvedList}
           journalOpen={journalOpen}
           onToggleJournal={() => setJournalOpen((v) => !v)}
+          onOpenWorld={() => setScene("BEACH_WORLD")}
         />
       )}
 
-      {scene === "TUNNEL" && <TunnelScene worldShakeClass={worldShakeClass} onEnterDoorGame={startDoorGameFromTunnel} />}
+      {scene === "BEACH_WORLD" && (
+        <BeachWorld
+          onBack={retryToMenu}
+          onEnterTunnel={() => goWithFade("TUNNEL")}
+          devToolsEnabled={devToolsEnabled}
+          onSkipToDoorGame={jumpToDoorGame}
+        />
+      )}
+
+      {scene === "TUNNEL" && (
+        <TunnelScene
+          worldShakeClass={worldShakeClass}
+          onEnterDoorGame={startDoorGameFromTunnel}
+          devToolsEnabled={devToolsEnabled}
+          onSkipToDoorGame={jumpToDoorGame}
+        />
+      )}
 
       {scene === "DOOR_GAME" && (
         <DoorGameScene
           worldShakeClass={worldShakeClass}
           level={level}
-          maxLevel={MAX_LEVEL}
+          room={room}
+          roomsPerFloor={ROOMS_PER_FLOOR}
           lives={lives}
           maxLives={MAX_LIVES}
+          corruptionActive={carryoverCurseActive}
           checkpointUnlocked={checkpointUnlocked}
           checkpointLevel={CHECKPOINT_LEVEL}
           doorCount={DOOR_COUNT}
           doorInputLocked={doorInputLocked}
+          hitPulseKey={doorHitPulseKey}
           getDoorClassName={getDoorClassName}
           getDoorVisualLabel={getDoorVisualLabel}
           onDoorPick={handleDoorPick}
@@ -1106,7 +1242,7 @@ export default function App() {
       )}
 
       {scene === "WIN" && (
-        <WinScene maxLevel={MAX_LEVEL} lives={lives} onStartNewRun={startNewRun} onRetryToMenu={retryToMenu} />
+        <WinScene maxLevel={episodeMaxFloor} lives={lives} onStartNewRun={startNewRun} onRetryToMenu={retryToMenu} />
       )}
 
       {selectedClue && (
@@ -1121,8 +1257,39 @@ export default function App() {
         </PuzzleModal>
       )}
 
+      {devToolsEnabled && (
+        <div
+          style={{
+            position: "fixed",
+            top: 10,
+            right: 10,
+            zIndex: 1400,
+            display: "grid",
+            gap: 6,
+            padding: "8px",
+            width: 150,
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,.14)",
+            background: "rgba(8,11,16,.82)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div style={{ fontSize: 11, letterSpacing: ".06em", opacity: 0.78, textTransform: "uppercase" }}>
+            Test Paneli
+          </div>
+          <button className="btn ghost" type="button" onClick={jumpToBeachWorld}>
+            Sahile Atla
+          </button>
+          <button className="btn ghost" type="button" onClick={jumpToTunnel}>
+            Tünele Atla
+          </button>
+          <button className="btn ghost" type="button" onClick={jumpToDoorGame}>
+            Kapılara Atla
+          </button>
+        </div>
+      )}
+
       <div className={`fade ${fadeOn ? "on" : ""}`} />
-      <div className={`hit ${hitPulse === 1 ? "on1" : hitPulse === 2 ? "on2" : ""}`} />
     </div>
   );
 }

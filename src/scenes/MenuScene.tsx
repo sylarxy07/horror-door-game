@@ -58,18 +58,18 @@ export function MenuScene({ onStart }: MenuSceneProps) {
 
       {/* Top: Logo */}
       <div className="menuMobileTop">
-        <div className="menuLogoEyebrow">— KAÇAMAZSIN —</div>
+        <div className="menuLogoEyebrow">— KAÇIŞ YOK —</div>
         <h1 className="menuLogo">
-          <span className="menuLogoLine1">KAÇ</span>
-          <span className="menuLogoLine2">AMAZ</span>
-          <span className="menuLogoLine3">SIN</span>
+        <span className="menuLogoLine1">NOSCAPE</span>
+          
+          
         </h1>
         <div className="menuLogoDivider">
           <span className="menuLogoDividerLine" />
           <span className="menuLogoDividerDot" />
           <span className="menuLogoDividerLine" />
         </div>
-        <p className="menuTagline">Kapı seç. Gerçeği öğren. Hayatta kal.</p>
+        <p className="menuTagline">The Doors Never Forget</p>
       </div>
 
       {/* Bottom: Nav buttons + Footer */}
@@ -98,7 +98,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         <div className="menuFooter">
           <span className="menuFooterBadge">v0.1 BETA</span>
           <span className="menuFooterSep">·</span>
-          <span className="menuFooterText">Horror Door Game</span>
+          <span className="menuFooterText">NOSCAPE</span>
         </div>
       </div>
     </div>
