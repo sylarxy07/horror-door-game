@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#131b26"/>
+      <stop offset="58%" stop-color="#0d131d"/>
+      <stop offset="100%" stop-color="#080c13"/>
+    </linearGradient>
+    <linearGradient id="tube" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0b1018"/>
+      <stop offset="50%" stop-color="#1a2430"/>
+      <stop offset="100%" stop-color="#0b1018"/>
+    </linearGradient>
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency=".82" numOctaves="3" seed="11"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0 .09"/>
+      </feComponentTransfer>
+    </filter>
+    <linearGradient id="lane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b4c2cf" stop-opacity=".16"/>
+      <stop offset="100%" stop-color="#5f7082" stop-opacity=".03"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#base)"/>
+  <rect x="160" y="80" width="1280" height="740" fill="url(#tube)" opacity=".9"/>
+
+  <polygon points="260,120 1340,120 1180,840 420,840" fill="#121b26" opacity=".85"/>
+  <polygon points="320,160 1280,160 1140,810 460,810" fill="#0d141f" opacity=".78"/>
+
+  <line x1="800" y1="160" x2="800" y2="810" stroke="url(#lane)" stroke-width="2"/>
+  <line x1="620" y1="190" x2="560" y2="810" stroke="#9eb1c3" stroke-opacity=".08" stroke-width="1.2"/>
+  <line x1="980" y1="190" x2="1040" y2="810" stroke="#9eb1c3" stroke-opacity=".08" stroke-width="1.2"/>
+
+  <rect x="520" y="170" width="560" height="36" fill="#c8d2de" opacity=".04"/>
+  <rect x="560" y="240" width="480" height="20" fill="#d5dce6" opacity=".03"/>
+  <rect x="600" y="296" width="400" height="14" fill="#d5dce6" opacity=".02"/>
+
+  <rect width="1600" height="900" filter="url(#noise)"/>
+</svg>

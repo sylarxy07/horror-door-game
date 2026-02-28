@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#30465f"/>
+      <stop offset="52%" stop-color="#1a2a3b"/>
+      <stop offset="100%" stop-color="#0b121b"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#213546"/>
+      <stop offset="100%" stop-color="#0d141d"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a3441" stop-opacity=".9"/>
+      <stop offset="100%" stop-color="#10161f" stop-opacity=".98"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".95" numOctaves="2" seed="7"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0 .08"/>
+      </feComponentTransfer>
+    </filter>
+    <radialGradient id="fog" cx=".5" cy=".42" r=".5">
+      <stop offset="0%" stop-color="#dbe6ef" stop-opacity=".18"/>
+      <stop offset="60%" stop-color="#9fb1c2" stop-opacity=".06"/>
+      <stop offset="100%" stop-color="#95a7b8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect y="400" width="1600" height="260" fill="url(#sea)" opacity=".95"/>
+  <rect y="560" width="1600" height="340" fill="url(#sand)"/>
+
+  <ellipse cx="800" cy="430" rx="540" ry="120" fill="url(#fog)"/>
+  <ellipse cx="980" cy="460" rx="390" ry="105" fill="#8da0b2" opacity=".06"/>
+  <ellipse cx="610" cy="470" rx="320" ry="92" fill="#91a4b8" opacity=".05"/>
+
+  <path d="M0 620 C260 560 430 700 720 650 C1020 600 1260 700 1600 620 L1600 900 L0 900 Z" fill="#111a24" opacity=".72"/>
+  <path d="M0 690 C320 640 550 780 880 730 C1190 682 1370 760 1600 710 L1600 900 L0 900 Z" fill="#0d151f" opacity=".85"/>
+
+  <rect width="1600" height="900" filter="url(#grain)"/>
+</svg>
