@@ -1,6 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { pathObjects } from "../game/data";
-import { TUNNEL_POS } from "../game/constants";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, TouchEvent } from "react";
 import type { ClueKey, CluesState, PathObject } from "../game/types";
 
 type WorldProjection = {
@@ -20,42 +19,13 @@ type SidePost = {
   heightBias: number;
 };
 
-type BeachClueLayout = {
-  xOffset: number;
-  yProgress: number;
-};
-
-const BEACH_CLUE_LAYOUT: Record<ClueKey, BeachClueLayout> = {
-  band:     { xOffset: -0.34, yProgress: 0.02 },
-  recorder: { xOffset:  0.28, yProgress: 2.77 },
-  note:     { xOffset: -0.22, yProgress: 5.52 },
-  phone:    { xOffset:  0.33, yProgress: 8.28 },
-  tag:      { xOffset: -0.24, yProgress: 10.96 },
-};
-
-const BEACH_CLUE_PATH_START = Math.min(...pathObjects.map((obj) => obj.pos));
-const BEACH_CLUE_PATH_END = Math.max(...pathObjects.map((obj) => obj.pos));
-const BEACH_CLUE_PATH_SPAN = Math.max(1, BEACH_CLUE_PATH_END - BEACH_CLUE_PATH_START);
-const BEACH_CLUE_RENDER_LANE_SCALE = 10.5;
-const BEACH_CLUE_PICKUP_RADIUS = 13.5;
-const BEACH_CLUE_PICKUP_X_RADIUS = 0.08;
-const BEACH_CLUE_PICKUP_Y_RADIUS = 13.5;
-// Hysteresis thresholds: enter with tight values, exit with wider ones
-const X_ENTER = BEACH_CLUE_PICKUP_X_RADIUS;        // 0.08
-const R_ENTER = BEACH_CLUE_PICKUP_RADIUS;           // 13.5
-const R_EXIT  = R_ENTER * 1.26;                    // ~17.0 (widened exit)
-const BEACH_TAMAY_X_MIN = -0.45;
-const BEACH_TAMAY_X_MAX = 0.45;
-const BEACH_TAMAY_X_SPEED = 0.00085;
-const BEACH_TAMAY_WORLD_TO_SCREEN_X = 120;
-
 type BeachSceneProps = {
   worldShakeClass: string;
   inspectedCount: number;
   pathProgressPercent: number;
   redLightPhase: "IDLE" | "SHOW_TEXT" | "READY";
-  onTouchStart: (e: React.TouchEvent) => void;
-  onTouchMove: (e: React.TouchEvent) => void;
+  onTouchStart: (e: TouchEvent) => void;
+  onTouchMove: (e: TouchEvent) => void;
   onTouchEnd: () => void;
   camSwayX: number;
   camSwayY: number;
@@ -91,542 +61,1286 @@ type BeachSceneProps = {
   onOpenWorld?: () => void;
 };
 
+type HotspotPosition = {
+  left: number;
+  top: number;
+};
+
+type BeachHotspot = {
+  id: string;
+  label: string;
+  obj: string;
+  pos: HotspotPosition;
+};
+
+type BeachSceneStep = {
+  id: string;
+  run: 1 | 2;
+  scene: string;
+  bg: string;
+  hotspots: BeachHotspot[];
+};
+
+type DragMeta = {
+  pointerId: number;
+  hotspotId: string;
+  sceneId: string;
+};
+
+type PosToast = {
+  label: string;
+  copyText: string;
+};
+
+type S1PuzzlePiece = "A" | "B" | "C" | "D" | "E";
+
+const FADE_MS = 500;
+const FADE_HALF_MS = Math.floor(FADE_MS / 2);
+const S1_PUZZLE_PIECES: readonly S1PuzzlePiece[] = ["A", "B", "C", "D", "E"];
+const S1_PUZZLE_TARGET: readonly S1PuzzlePiece[] = ["E", "B", "C", "A", "D"];
+const OBJECT_VISUAL_TUNING = {
+  toneFilter: "brightness(0.9) contrast(0.95) saturate(0.8)",
+  hazeBlur: "blur(0.2px)",
+  dropShadow: "drop-shadow(0 9px 8px rgba(0,0,0,0.34))",
+  contactOverlay:
+    "linear-gradient(to top, rgba(160,150,140,0.35) 0%, rgba(160,150,140,0.10) 25%, rgba(0,0,0,0) 55%)",
+} as const;
+
+const BEACH_STEPS: readonly BeachSceneStep[] = [
+  {
+    id: "run1-s1",
+    run: 1,
+    scene: "S1",
+    bg: "/assets/img/beach/beach_s1.png",
+    hotspots: [
+      {
+        id: "S1_KEY",
+        label: "Anahtar",
+        obj: "/assets/img/beach/obj1_key.png",
+        pos: { left: 83.3, top: 80.4 },
+      },
+      {
+        id: "S1_NOTE",
+        label: "Not",
+        obj: "/assets/img/beach/obj3_note.png",
+        pos: { left: 77.3, top: 84.4 },
+      },
+    ],
+  },
+  {
+    id: "run1-s2",
+    run: 1,
+    scene: "S2",
+    bg: "/assets/img/beach/beach_s2.png",
+    hotspots: [
+      {
+        id: "S2_BADGE",
+        label: "Rozet",
+        obj: "/assets/img/beach/obj2_badge.png",
+        pos: { left: 84.1, top: 88.1 },
+      },
+    ],
+  },
+  {
+    id: "run1-s3",
+    run: 1,
+    scene: "S3",
+    bg: "/assets/img/beach/beach_s3.png",
+    hotspots: [
+      {
+        id: "S3_NOTE",
+        label: "Not",
+        obj: "/assets/img/beach/obj3_note.png",
+        pos: { left: 88.5, top: 91.2 },
+      },
+    ],
+  },
+  {
+    id: "run2-s4",
+    run: 2,
+    scene: "S4",
+    bg: "/assets/img/beach/beach_s4.png",
+    hotspots: [
+      {
+        id: "S4_WATCH",
+        label: "Saat",
+        obj: "/assets/img/beach/obj4_watch.png",
+        pos: { left: 52.7, top: 84.6 },
+      },
+    ],
+  },
+  {
+    id: "run2-s5",
+    run: 2,
+    scene: "S5",
+    bg: "/assets/img/beach/beach_s2.png",
+    hotspots: [
+      {
+        id: "S5_PLATE",
+        label: "Plaka",
+        obj: "/assets/img/beach/obj5_plate.png",
+        pos: { left: 83.2, top: 89.8 },
+      },
+    ],
+  },
+] as const;
+
+const HATCH_STEP = {
+  id: "hatch",
+  scene: "HATCH",
+  bg: "/assets/img/beach/beach_s4.png",
+  hotspots: [
+    {
+      id: "HATCH",
+      label: "Hatch",
+      obj: "/assets/img/beach/obj_hatch.png",
+      pos: { left: 55, top: 83.6 },
+    },
+  ],
+} as const;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 export function BeachScene({
   worldShakeClass,
-  inspectedCount,
-  pathProgressPercent,
-  redLightPhase,
   onTouchStart,
   onTouchMove,
   onTouchEnd,
-  camSwayX,
-  camSwayY,
-  cameraPos,
-  moveStrength,
-  redLightUnlocked,
-  sidePosts,
-  relToScreen,
-  tunnelProj,
-  redLampProj,
-  clues,
-  targetHint,
-  canEnterTunnel,
-  canOpenBeachPuzzle,
-  beachPuzzleStatusLabel,
-  selectedClue,
-  moveDir,
-  tamayX,
-  tamayLift,
-  bob,
-  tamayScale,
-  stride,
-  onMoveDir,
-  onOpenClue,
-  onOpenBeachPuzzle,
   onEnterTunnel,
-  beachHint,
-  beachObjectsSolvedList,
-  journalOpen,
-  onToggleJournal,
-  onOpenWorld,
 }: BeachSceneProps) {
-  const [tamayWorldX, setTamayWorldX] = useState(0);
-  const [xMoveDir, setXMoveDir] = useState<-1 | 0 | 1>(0);
-  const xKeyStateRef = useRef({ left: false, right: false });
-  // Sticky active pickup key: enters on narrow threshold, exits on wider threshold
-  const activePickupKeyRef = useRef<ClueKey | null>(null);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [hatchVisible, setHatchVisible] = useState(false);
+  const [collectedIds, setCollectedIds] = useState<Set<string>>(() => new Set());
 
-  const clampTamayWorldX = (value: number) => Math.max(BEACH_TAMAY_X_MIN, Math.min(BEACH_TAMAY_X_MAX, value));
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayTarget, setOverlayTarget] = useState<"scene" | "hatch" | null>(null);
+  const [selectedHotspot, setSelectedHotspot] = useState<BeachHotspot | null>(null);
 
-  useEffect(() => {
-    if (!selectedClue) return;
-    xKeyStateRef.current = { left: false, right: false };
-    setXMoveDir(0);
-  }, [selectedClue]);
+  const [fadeOn, setFadeOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [transitionText, setTransitionText] = useState<string | null>(null);
+  const [pulseTick, setPulseTick] = useState(0);
+  const [s1PuzzleOpen, setS1PuzzleOpen] = useState(false);
+  const [s1PuzzleSolved, setS1PuzzleSolved] = useState(false);
+  const [s1PuzzleAdvancing, setS1PuzzleAdvancing] = useState(false);
+  const [s1PuzzleStatus, setS1PuzzleStatus] = useState<string | null>(null);
+  const [s1PuzzleSlots, setS1PuzzleSlots] = useState<Array<S1PuzzlePiece | null>>([null, null, null, null, null]);
+  const [s1SelectedPiece, setS1SelectedPiece] = useState<S1PuzzlePiece | null>(null);
 
-  useEffect(() => {
-    if (xMoveDir === 0 || selectedClue) return;
+  const [posMode, setPosMode] = useState(false);
+  const [draggingHotspotId, setDraggingHotspotId] = useState<string | null>(null);
+  const [devHotspotPositions, setDevHotspotPositions] = useState<Record<string, HotspotPosition>>({});
+  const [posToast, setPosToast] = useState<PosToast | null>(null);
 
-    let raf = 0;
-    let last = performance.now();
+  const dragRef = useRef<DragMeta | null>(null);
+  const timersRef = useRef<number[]>([]);
+  const posToastTimerRef = useRef<number | null>(null);
 
-    const tick = (now: number) => {
-      const dt = Math.min(34, now - last);
-      last = now;
-      setTamayWorldX((prev) => clampTamayWorldX(prev + xMoveDir * dt * BEACH_TAMAY_X_SPEED));
-      raf = window.requestAnimationFrame(tick);
-    };
+  const isDev = import.meta.env.DEV;
 
-    raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
-  }, [xMoveDir, selectedClue]);
+  const currentStep = BEACH_STEPS[Math.min(stepIndex, BEACH_STEPS.length - 1)];
+  const activeStep = hatchVisible
+    ? {
+        id: HATCH_STEP.id,
+        run: 2 as const,
+        scene: HATCH_STEP.scene,
+        bg: HATCH_STEP.bg,
+        hotspots: HATCH_STEP.hotspots,
+      }
+    : currentStep;
 
-  useEffect(() => {
-    const syncXDir = () => {
-      const { left, right } = xKeyStateRef.current;
-      if (left === right) {
-        setXMoveDir(0);
+  const allCollectibleCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const step of BEACH_STEPS) {
+      for (const hotspot of step.hotspots) {
+        ids.add(hotspot.id);
+      }
+    }
+    return ids.size;
+  }, []);
+
+  const runLabel = hatchVisible ? "RUN2" : currentStep.run === 1 ? "RUN1" : "RUN2";
+  const activeSceneId = activeStep.scene;
+  const activeSceneHotspots = activeStep.hotspots;
+  const s1NoteHotspot = activeSceneHotspots.find((hotspot) => hotspot.id === "S1_NOTE");
+  const visibleHotspots = posMode
+    ? activeSceneHotspots
+    : activeSceneHotspots.filter((hotspot) => !collectedIds.has(hotspot.id));
+
+  const s1ItemsVisibleCount = activeSceneId === "S1" ? visibleHotspots.length : 0;
+  const collectedCount = collectedIds.size;
+  const bgName = useMemo(() => {
+    const parts = activeStep.bg.split("/");
+    return parts[parts.length - 1] ?? activeStep.bg;
+  }, [activeStep.bg]);
+
+  const isS1KeyPanel = overlayTarget === "scene" && selectedHotspot?.id === "S1_KEY";
+  const isS1NotePanel = overlayTarget === "scene" && selectedHotspot?.id === "S1_NOTE";
+  const overlayTitle = isS1KeyPanel ? "Paslı Anahtar" : isS1NotePanel ? "Kenar Notu" : "Nesneyi incele";
+  const overlayDescription = isS1KeyPanel
+    ? "Soğuk… sanki biraz önce tutulmuş."
+    : isS1NotePanel
+      ? "Halkanın çentikleri yerlerini ister. Kenarlarından başla."
+    : overlayTarget === "hatch"
+      ? "Kapak acik. Asagi inis icin gecis hazir."
+      : "Kayit tamamlandi. Panel kapaninca bir sonraki sahneye gecilecek.";
+  const overlayButtonLabel = overlayTarget === "hatch" ? "Kapat ve Tunnel'a gec" : "Kapat";
+
+  const pulsePhase = pulseTick * (Math.PI / 10);
+  const pulseWave = (Math.sin(pulsePhase) + 1) / 2;
+  const pulseScale = 1 + pulseWave * 0.03;
+  const pulseOpacity = 0.92 + pulseWave * 0.04;
+  const shadowOpacity = 0.78 + pulseWave * 0.12;
+
+  const getHotspotPosition = useCallback(
+    (hotspot: BeachHotspot) => (posMode ? (devHotspotPositions[hotspot.id] ?? hotspot.pos) : hotspot.pos),
+    [devHotspotPositions, posMode]
+  );
+
+  const schedule = useCallback((fn: () => void, ms: number) => {
+    const id = window.setTimeout(fn, ms);
+    timersRef.current.push(id);
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    for (const id of timersRef.current) {
+      window.clearTimeout(id);
+    }
+    timersRef.current = [];
+  }, []);
+
+  const showPosToast = useCallback(
+    (sceneId: string, left: number, top: number) => {
+      if (!isDev) return;
+
+      const label = `${sceneId} left=${left.toFixed(1)} top=${top.toFixed(1)}`;
+      setPosToast({ label, copyText: label });
+
+      if (posToastTimerRef.current !== null) {
+        window.clearTimeout(posToastTimerRef.current);
+      }
+      posToastTimerRef.current = window.setTimeout(() => {
+        setPosToast(null);
+        posToastTimerRef.current = null;
+      }, 2000);
+    },
+    [isDev]
+  );
+
+  const onCopyPosToast = useCallback(async () => {
+    if (!posToast) return;
+
+    try {
+      await navigator.clipboard.writeText(posToast.copyText);
+    } catch (error) {
+      console.warn("Clipboard copy failed", error);
+    }
+  }, [posToast]);
+
+  const openS1Puzzle = useCallback(() => {
+    setS1PuzzleOpen(true);
+    setS1PuzzleAdvancing(false);
+    setS1PuzzleStatus(null);
+    setS1PuzzleSlots([null, null, null, null, null]);
+    setS1SelectedPiece(null);
+  }, []);
+
+  const onS1PieceSelect = useCallback(
+    (piece: S1PuzzlePiece) => {
+      if (s1PuzzleAdvancing) return;
+
+      setS1PuzzleStatus(null);
+      setS1SelectedPiece(piece);
+      setS1PuzzleSlots((prev) => prev.map((slotPiece) => (slotPiece === piece ? null : slotPiece)));
+    },
+    [s1PuzzleAdvancing]
+  );
+
+  const runFade = useCallback(
+    (onMidpoint: () => void, onDone?: () => void) => {
+      if (busy) return;
+
+      setBusy(true);
+      setFadeOn(true);
+
+      schedule(() => {
+        onMidpoint();
+      }, FADE_HALF_MS);
+
+      schedule(() => {
+        setFadeOn(false);
+        setBusy(false);
+        onDone?.();
+      }, FADE_MS);
+    },
+    [busy, schedule]
+  );
+
+  const completeS1Puzzle = useCallback(() => {
+    setS1PuzzleSolved(true);
+    setS1PuzzleAdvancing(true);
+    setS1PuzzleStatus("Anahtar kilidi hatırladı.");
+
+    schedule(() => {
+      setS1PuzzleOpen(false);
+      setS1PuzzleAdvancing(false);
+      runFade(() => {
+        setStepIndex(1);
+      });
+    }, 700);
+  }, [runFade, schedule]);
+
+  const onS1SlotClick = useCallback(
+    (index: number) => {
+      if (s1PuzzleAdvancing) return;
+
+      if (!s1SelectedPiece) {
+        const pieceOnSlot = s1PuzzleSlots[index];
+        if (!pieceOnSlot) return;
+
+        setS1PuzzleStatus(null);
+        setS1SelectedPiece(pieceOnSlot);
+        setS1PuzzleSlots((prev) => {
+          const next = [...prev];
+          next[index] = null;
+          return next;
+        });
+        return;
+      }
+
+      const nextSlots = [...s1PuzzleSlots].map((slotPiece) => (slotPiece === s1SelectedPiece ? null : slotPiece));
+      const replacedPiece = nextSlots[index];
+      nextSlots[index] = s1SelectedPiece;
+
+      setS1PuzzleStatus(null);
+      setS1PuzzleSlots(nextSlots);
+      setS1SelectedPiece(replacedPiece ?? null);
+
+      const allFilled = nextSlots.every((slotPiece): slotPiece is S1PuzzlePiece => slotPiece !== null);
+      if (!allFilled) return;
+
+      const isCorrect = nextSlots.every((slotPiece, slotIndex) => slotPiece === S1_PUZZLE_TARGET[slotIndex]);
+      if (isCorrect) {
+        completeS1Puzzle();
       } else {
-        setXMoveDir(right ? 1 : -1);
+        setS1PuzzleStatus("Dizilim kilide uymadı. Parçaları yeniden yerleştir.");
       }
-    };
+    },
+    [completeS1Puzzle, s1PuzzleAdvancing, s1PuzzleSlots, s1SelectedPiece]
+  );
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (selectedClue) return;
-      const key = e.key.toLowerCase();
-      if (key === "a" || e.key === "ArrowLeft") {
-        xKeyStateRef.current.left = true;
-        syncXDir();
-        e.preventDefault();
-      } else if (key === "d" || e.key === "ArrowRight") {
-        xKeyStateRef.current.right = true;
-        syncXDir();
-        e.preventDefault();
+  const advanceScene = useCallback(
+    (fromIndex: number) => {
+      if (fromIndex === 2) {
+        setTransitionText("Run 1 tamamlandi. Run 2 basliyor...");
+        runFade(
+          () => {
+            setStepIndex(3);
+          },
+          () => {
+            setTransitionText(null);
+          }
+        );
+        return;
       }
-    };
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === "a" || e.key === "ArrowLeft") {
-        xKeyStateRef.current.left = false;
-        syncXDir();
-      } else if (key === "d" || e.key === "ArrowRight") {
-        xKeyStateRef.current.right = false;
-        syncXDir();
+      if (fromIndex < BEACH_STEPS.length - 1) {
+        runFade(() => {
+          setStepIndex(fromIndex + 1);
+        });
+        return;
       }
-    };
 
-    const onBlur = () => {
-      xKeyStateRef.current = { left: false, right: false };
-      setXMoveDir(0);
-    };
+      runFade(() => {
+        setHatchVisible(true);
+      });
+    },
+    [runFade]
+  );
 
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", onBlur);
+  const openOverlay = useCallback(
+    (hotspot: BeachHotspot) => {
+      if (busy) return;
+      setSelectedHotspot(hotspot);
+      setOverlayTarget(hatchVisible ? "hatch" : "scene");
+      setOverlayOpen(true);
+    },
+    [busy, hatchVisible]
+  );
+
+  const closeOverlay = useCallback(() => {
+    if (!overlayOpen || busy) return;
+
+    const target = overlayTarget;
+    const hotspot = selectedHotspot;
+
+    setOverlayOpen(false);
+    setOverlayTarget(null);
+    setSelectedHotspot(null);
+
+    if (target === "hatch") {
+      setTransitionText("Kapak aciliyor...");
+      runFade(
+        () => {
+          onEnterTunnel();
+        },
+        () => {
+          setTransitionText(null);
+        }
+      );
+      return;
+    }
+
+    if (target === "scene" && !hatchVisible && hotspot) {
+      const nextCollected = new Set(collectedIds);
+      nextCollected.add(hotspot.id);
+      setCollectedIds(nextCollected);
+
+      const allCollectedInScene = currentStep.hotspots.every((sceneHotspot) => nextCollected.has(sceneHotspot.id));
+      if (allCollectedInScene) {
+        if (currentStep.scene === "S1" && !s1PuzzleSolved) {
+          openS1Puzzle();
+          return;
+        }
+        advanceScene(stepIndex);
+      }
+    }
+  }, [
+    advanceScene,
+    busy,
+    collectedIds,
+    currentStep.hotspots,
+    currentStep.scene,
+    hatchVisible,
+    onEnterTunnel,
+    openS1Puzzle,
+    overlayOpen,
+    overlayTarget,
+    runFade,
+    s1PuzzleSolved,
+    selectedHotspot,
+    stepIndex,
+  ]);
+
+  const devNext = useCallback(() => {
+    if (!isDev || busy) return;
+
+    if (overlayOpen) {
+      closeOverlay();
+      return;
+    }
+
+    if (hatchVisible) {
+      setTransitionText("DEV: Tunnel'a geciliyor...");
+      runFade(
+        () => {
+          onEnterTunnel();
+        },
+        () => {
+          setTransitionText(null);
+        }
+      );
+      return;
+    }
+
+    if (currentStep.scene === "S1" && !s1PuzzleSolved) {
+      setCollectedIds((prev) => {
+        const next = new Set(prev);
+        for (const hotspot of currentStep.hotspots) {
+          next.add(hotspot.id);
+        }
+        return next;
+      });
+      openS1Puzzle();
+      return;
+    }
+
+    setCollectedIds((prev) => {
+      const next = new Set(prev);
+      for (const hotspot of currentStep.hotspots) {
+        next.add(hotspot.id);
+      }
+      return next;
+    });
+    advanceScene(stepIndex);
+  }, [
+    advanceScene,
+    busy,
+    closeOverlay,
+    currentStep.hotspots,
+    currentStep.scene,
+    hatchVisible,
+    isDev,
+    onEnterTunnel,
+    openS1Puzzle,
+    overlayOpen,
+    runFade,
+    s1PuzzleSolved,
+    stepIndex,
+  ]);
+
+  const updateHotspotFromClient = useCallback(
+    (meta: DragMeta, clientX: number, clientY: number, logValue: boolean) => {
+      const viewportWidth = Math.max(window.innerWidth, 1);
+      const viewportHeight = Math.max(window.innerHeight, 1);
+
+      const leftPct = clamp((clientX / viewportWidth) * 100, 4, 96);
+      const topPct = clamp((clientY / viewportHeight) * 100, 4, 96);
+
+      setDevHotspotPositions((prev) => ({
+        ...prev,
+        [meta.hotspotId]: {
+          left: leftPct,
+          top: topPct,
+        },
+      }));
+
+      if (logValue) {
+        console.log(`POS ${meta.sceneId}: left=${leftPct.toFixed(1)} top=${topPct.toFixed(1)}`);
+        showPosToast(meta.sceneId, leftPct, topPct);
+      }
+    },
+    [showPosToast]
+  );
+
+  const onHotspotPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLButtonElement>, hotspot: BeachHotspot) => {
+      if (!isDev || !posMode || busy || overlayOpen) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const meta: DragMeta = {
+        pointerId: e.pointerId,
+        hotspotId: hotspot.id,
+        sceneId: activeSceneId,
+      };
+
+      dragRef.current = meta;
+      setDraggingHotspotId(meta.hotspotId);
+      updateHotspotFromClient(meta, e.clientX, e.clientY, false);
+    },
+    [activeSceneId, busy, isDev, overlayOpen, posMode, updateHotspotFromClient]
+  );
+
+  const onHotspotClick = useCallback(
+    (hotspot: BeachHotspot) => {
+      if (posMode) return;
+      openOverlay(hotspot);
+    },
+    [openOverlay, posMode]
+  );
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setPulseTick((prev) => prev + 1);
+    }, 80);
 
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("blur", onBlur);
+      window.clearInterval(id);
     };
-  }, [selectedClue]);
+  }, []);
 
-  const startStrafe = (dir: -1 | 1) => {
-    if (selectedClue) return;
-    setXMoveDir(dir);
-  };
+  useEffect(() => {
+    if (!draggingHotspotId) return;
 
-  const stopStrafe = () => setXMoveDir(0);
+    const onPointerMove = (event: PointerEvent) => {
+      const meta = dragRef.current;
+      if (!meta || meta.pointerId !== event.pointerId) return;
+      updateHotspotFromClient(meta, event.clientX, event.clientY, false);
+    };
 
-  const tamayWorldY = (Math.min(pathProgressPercent, 100) / 100) * TUNNEL_POS;
+    const onPointerUp = (event: PointerEvent) => {
+      const meta = dragRef.current;
+      if (!meta || meta.pointerId !== event.pointerId) return;
 
-  const worldClues = pathObjects.map((obj) => {
-    const layout = BEACH_CLUE_LAYOUT[obj.key];
-    const objX = layout.xOffset;
-    const objY = BEACH_CLUE_PATH_START + layout.yProgress * BEACH_CLUE_PATH_SPAN;
-    return { obj, objX, objY };
-  });
+      updateHotspotFromClient(meta, event.clientX, event.clientY, true);
+      dragRef.current = null;
+      setDraggingHotspotId(null);
+    };
 
-  const clueWorldData = worldClues.map((clue) => {
-    const { obj, objX, objY } = clue;
-    const lane = objX * BEACH_CLUE_RENDER_LANE_SCALE;
-    const projection = relToScreen(objY, lane);
-    const dx = tamayWorldX - objX;
-    const dy = tamayWorldY - objY;
-    const worldDistance = Math.hypot(dx, dy);
-    return { obj, projection, dx, dy, worldDistance };
-  });
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
-  // --- Hysteresis: exit check first (wider threshold on locked active item) ---
-  if (activePickupKeyRef.current !== null) {
-    const activeData = clueWorldData.find((d) => d.obj.key === activePickupKeyRef.current);
-    if (
-      !activeData ||
-      clues[activePickupKeyRef.current] ||
-      activeData.worldDistance >= R_EXIT
-    ) {
-      activePickupKeyRef.current = null;
-    }
-  }
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [draggingHotspotId, updateHotspotFromClient]);
 
-  // --- nearestUnsolved only computed when no key is locked (enter check + hint) ---
-  let nearestUnsolved: (typeof clueWorldData)[number] | null = null;
-  if (activePickupKeyRef.current === null) {
-    for (const item of clueWorldData) {
-      if (clues[item.obj.key]) continue;
-      if (!nearestUnsolved || item.worldDistance < nearestUnsolved.worldDistance) {
-        nearestUnsolved = item;
+  useEffect(() => {
+    if (posMode) return;
+    dragRef.current = null;
+    setDraggingHotspotId(null);
+  }, [posMode]);
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+      if (posToastTimerRef.current !== null) {
+        window.clearTimeout(posToastTimerRef.current);
+        posToastTimerRef.current = null;
       }
-    }
-    // Enter check with tight threshold — only when no key is locked
-    if (
-      nearestUnsolved &&
-      nearestUnsolved.worldDistance < R_ENTER &&
-      Math.abs(nearestUnsolved.dx) < X_ENTER
-    ) {
-      activePickupKeyRef.current = nearestUnsolved.obj.key;
-    }
-  }
-
-  const activePickupKey: ClueKey | null = activePickupKeyRef.current;
-  // pickupTargetKey is directly derived from the locked active key
-  const pickupTargetKey: ClueKey | null = activePickupKey;
-
-  const beachTargetHint = (() => {
-    if (activePickupKey !== null) {
-      const activeData = clueWorldData.find((d) => d.obj.key === activePickupKey);
-      return `Yakin: ${activeData?.obj.label ?? ""}`;
-    }
-    if (nearestUnsolved) {
-      const dir = nearestUnsolved.dy > 0 ? "geride" : "ileride";
-      return `Sonraki hedef: ${nearestUnsolved.obj.label} (${Math.round(Math.abs(nearestUnsolved.dy))}m, ${dir})`;
-    }
-    return "";
-  })();
+    };
+  }, [clearTimers]);
 
   return (
-    <div className="screen">
-      <header className="panel hud">
-        <div>
-          <div className="hudSub">Sahil Yolu</div>
-          <div className="hudTitle">Arkadan Kamera Keşif</div>
-        </div>
-        <div className="pills">
-          <div className="pill">{inspectedCount}/5 İpucu</div>
-          <div className={`pill ${pathProgressPercent >= 100 ? "good" : ""}`}>Yol %{pathProgressPercent}</div>
-          <div className={`pill ${canOpenBeachPuzzle ? "good" : ""}`}>{beachPuzzleStatusLabel}</div>
-          <div className={`pill ${redLightPhase === "READY" ? "red" : ""}`}>
-            {redLightPhase === "READY" ? "Kırmızı Işık Aktif" : "Işık Pasif"}
-          </div>
-        </div>
-      </header>
+    <div
+      className={worldShakeClass}
+      style={{
+        position: "fixed",
+        inset: 0,
+        overflow: "hidden",
+        background: "#05070b",
+      }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+      aria-label="Beach"
+    >
+      <img
+        src={activeStep.bg}
+        alt=""
+        draggable={false}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          userSelect: "none",
+          pointerEvents: "none",
+        }}
+      />
 
-      <main
-        className={`world ${worldShakeClass}`}
-        aria-label="Arkadan kamera sahil yürüyüş yolu"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 6,
+        }}
       >
-        <div
-          className="worldSurface"
-          style={{
-            transform: `translate(${camSwayX}px, ${camSwayY}px)`,
-          }}
-        >
-          <div className="beachSky" style={{ transform: `translateY(${cameraPos * 0.02}px)` }} />
-          <div className="beachHorizonGlow" style={{ transform: `translateY(${cameraPos * 0.015}px)` }} />
-          <div className="seaBands" style={{ transform: `translateY(${cameraPos * 0.06}px)` }} />
+        {visibleHotspots.map((hotspot) => {
+          const isS1Key = hotspot.id === "S1_KEY";
+          const isS1Note = hotspot.id === "S1_NOTE";
+          const isS1ClusterKey = activeSceneId === "S1" && isS1Key;
+          const isS1ClusterNote = activeSceneId === "S1" && isS1Note;
+          const hotspotPosBase = getHotspotPosition(hotspot);
+          const s1NotePos = s1NoteHotspot ? getHotspotPosition(s1NoteHotspot) : null;
+          const hotspotPos =
+            isS1ClusterKey && s1NotePos
+              ? {
+                  left: clamp(s1NotePos.left + 1.8, 0, 100),
+                  top: clamp(s1NotePos.top - 0.6, 0, 100),
+                }
+              : hotspotPosBase;
+          const hotspotScale = busy ? 1 : pulseScale;
+          const hotspotZIndex = isS1Key ? 30 : isS1Note ? 20 : 1;
+          const shouldRenderShadow = !isS1Key;
+          const hotspotImageFilter = isS1ClusterKey
+            ? "drop-shadow(0 6px 6px rgba(0,0,0,0.35))"
+            : isS1Key
+              ? OBJECT_VISUAL_TUNING.dropShadow
+              : `${OBJECT_VISUAL_TUNING.toneFilter} ${OBJECT_VISUAL_TUNING.hazeBlur} ${OBJECT_VISUAL_TUNING.dropShadow}`;
+          const hotspotMixBlendMode = isS1Key ? "normal" : "multiply";
+          const hotspotImageTransform = isS1ClusterKey
+            ? "rotate(0deg) rotateX(0deg) rotateZ(0deg) scale(0.90)"
+            : isS1Key
+              ? `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`
+              : `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`;
 
-          <div className="beachPerspective" style={{ pointerEvents: "auto" }}>
-            <div
-              className="walkway"
-              style={{ transform: `translateX(-50%) rotateX(63deg) translateY(${moveStrength * 2}px)` }}
-            />
-            <div className="walkwayEdgeL" />
-            <div className="walkwayEdgeR" />
-
-            <div
-              className="horizonRedDot"
-              style={{
-                opacity: redLightUnlocked ? 1 : 0.45,
-                transform: `translateX(-50%) scale(${redLightUnlocked ? 1.1 : 0.9})`,
-              }}
-            />
-
-            {sidePosts.map((post, idx) => {
-              const p = relToScreen(post.pos, post.lane);
-              if (!p.visible || p.t < 0.1) return null;
-              const w = Math.max(3, 5 * p.scale);
-              const h = Math.max(8, (18 + post.heightBias * 5) * p.scale);
-              const shadowW = Math.max(10, 18 * p.scale);
-
-              return (
-                <React.Fragment key={`post-${idx}`}>
-                  <div
-                    className="sidePostShadow"
-                    style={{
-                      left: `${p.x}%`,
-                      top: `${p.y + 2.2}%`,
-                      width: `${shadowW}px`,
-                      height: `${Math.max(4, 7 * p.scale)}px`,
-                      transform: "translate(-50%,-50%)",
-                      opacity: p.opacity * 0.6,
-                    }}
-                  />
-                  <div
-                    className="sidePost"
-                    style={{
-                      left: `${p.x}%`,
-                      top: `${p.y}%`,
-                      width: `${w}px`,
-                      height: `${h}px`,
-                      transform: "translate(-50%,-100%)",
-                      opacity: p.opacity * 0.85,
-                    }}
-                  >
-                    <div
-                      className="sidePostCap"
-                      style={{
-                        top: `${Math.max(-2, -1 * p.scale)}px`,
-                        width: `${Math.max(5, w * 1.8)}px`,
-                        height: `${Math.max(2, 2.2 * p.scale)}px`,
-                        opacity: 0.6,
-                      }}
-                    />
-                  </div>
-                </React.Fragment>
-              );
-            })}
-
-            {tunnelProj.visible && (
-              <div
-                className={`tunnelPortalWorld ${redLightUnlocked ? "active" : ""}`}
-                style={{
-                  left: `${tunnelProj.x}%`,
-                  top: `${tunnelProj.y}%`,
-                  width: `${32 * tunnelProj.scale}px`,
-                  height: `${42 * tunnelProj.scale}px`,
-                  transform: "translate(-50%,-50%)",
-                  opacity: tunnelProj.opacity,
-                }}
-              />
-            )}
-
-            {redLampProj.visible && redLightUnlocked && (
-              <div
+          if (isS1Note) {
+            const noteScale = hotspotScale * 1.08;
+            return (
+              <button
+                key={hotspot.id}
+                type="button"
+                onClick={() => onHotspotClick(hotspot)}
+                onPointerDown={(e) => onHotspotPointerDown(e, hotspot)}
+                disabled={busy}
+                aria-label={hotspot.label}
                 style={{
                   position: "absolute",
-                  left: `${redLampProj.x}%`,
-                  top: `${Math.max(12, redLampProj.y - 4)}%`,
-                  width: `${8 * redLampProj.scale}px`,
-                  height: `${8 * redLampProj.scale}px`,
-                  borderRadius: "50%",
-                  background: "#ff2a2a",
-                  boxShadow: "0 0 14px rgba(255,42,42,.45)",
-                  transform: "translate(-50%,-50%)",
-                  zIndex: 9,
-                  opacity: redLampProj.opacity,
-                  animation: "blink 1.1s infinite",
+                  left: `${hotspotPos.left}%`,
+                  top: `${hotspotPos.top}%`,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: hotspotZIndex,
+                  width: 72,
+                  height: 72,
+                  minWidth: 72,
+                  minHeight: 72,
+                  background: "transparent",
+                  border: 0,
+                  padding: 0,
+                  margin: 0,
+                  boxShadow: "none",
+                  outline: "none",
+                  cursor: posMode ? (draggingHotspotId === hotspot.id ? "grabbing" : "grab") : "pointer",
+                  pointerEvents: "auto",
+                  touchAction: posMode ? "none" : "manipulation",
                 }}
-              />
-            )}
+              >
+                <img
+                  src={hotspot.obj}
+                  alt={hotspot.label}
+                  draggable={false}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    display: "block",
+                    background: "transparent",
+                    opacity: isS1ClusterNote ? 0.96 : pulseOpacity,
+                    filter: isS1ClusterNote ? "brightness(0.95)" : undefined,
+                    transform: isS1ClusterNote ? "rotate(4deg) scale(1.08)" : `scale(${noteScale})`,
+                    transformOrigin: "50% 50%",
+                    position: isS1ClusterNote ? "relative" : undefined,
+                    zIndex: isS1ClusterNote ? 20 : undefined,
+                    transition: "transform 220ms ease, opacity 220ms ease",
+                  }}
+                />
+              </button>
+            );
+          }
 
-            {clueWorldData.map(({ obj, projection: p }) => {
-              if (!p.visible) return null;
-
-              const isSolved = clues[obj.key];
-              const isCurrent = !isSolved && nearestUnsolved?.obj.key === obj.key;
-              const isPickableThis = activePickupKey === obj.key;
-              const size = 18 * p.scale;
-              const labelLeftPct = isPickableThis ? Math.max(8, Math.min(92, p.x)) : p.x;
-              const labelTopPct  = isPickableThis ? Math.max(12, Math.min(92, p.y - 1.2)) : p.y - 1.2;
-
-              return (
-                <React.Fragment key={obj.key}>
+          return (
+            <button
+              key={hotspot.id}
+              type="button"
+              onClick={() => onHotspotClick(hotspot)}
+              onPointerDown={(e) => onHotspotPointerDown(e, hotspot)}
+              disabled={busy}
+              aria-label={hotspot.label}
+              style={{
+                position: "absolute",
+                left: `${hotspotPos.left}%`,
+                top: `${hotspotPos.top}%`,
+                transform: "translate(-50%, -50%)",
+                zIndex: hotspotZIndex,
+                width: 72,
+                height: 72,
+                minWidth: 72,
+                minHeight: 72,
+                border: "none",
+                borderRadius: 12,
+                background: "transparent",
+                padding: 0,
+                margin: 0,
+                cursor: posMode ? (draggingHotspotId === hotspot.id ? "grabbing" : "grab") : "pointer",
+                pointerEvents: "auto",
+                touchAction: posMode ? "none" : "manipulation",
+                outline: isS1Key ? "none" : undefined,
+                boxShadow: isS1Key ? "none" : undefined,
+                appearance: isS1Key ? "none" : undefined,
+                WebkitTapHighlightColor: isS1Key ? "transparent" : undefined,
+                backdropFilter: isS1Key ? "none" : undefined,
+                WebkitBackdropFilter: isS1Key ? "none" : undefined,
+                filter: isS1Key ? "none" : undefined,
+              }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  height: "100%",
+                  pointerEvents: "none",
+                  background: "transparent",
+                  backdropFilter: isS1Key ? "none" : undefined,
+                  WebkitBackdropFilter: isS1Key ? "none" : undefined,
+                  filter: isS1Key ? "none" : undefined,
+                }}
+              >
+                {shouldRenderShadow && (
                   <div
-                    className={`worldMarker ${isSolved ? "solved" : ""} ${isCurrent ? "current" : ""}`}
+                    aria-hidden
                     style={{
-                      left: `${p.x}%`,
-                      top: `${p.y}%`,
-                      width: `${size}px`,
-                      height: `${size}px`,
-                      transform: "translate(-50%,-50%)",
-                      opacity: p.opacity,
-                      fontSize: `${Math.max(9, 9 * p.scale)}px`,
+                      position: "absolute",
+                      left: "50%",
+                      top: "80%",
+                      transform: "translateX(-50%)",
+                      width: "108%",
+                      height: "20%",
+                      borderRadius: 999,
+                      background: "rgba(0,0,0,0.34)",
+                      filter: "blur(6px)",
+                      opacity: shadowOpacity,
                     }}
-                  >
-                    {isSolved ? "✓" : obj.icon}
-                  </div>
+                  />
+                )}
+
+                <img
+                  src={hotspot.obj}
+                  alt={hotspot.label}
+                  draggable={false}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    background: "transparent",
+                    objectFit: "contain",
+                    display: "block",
+                    opacity: pulseOpacity,
+                    transform: hotspotImageTransform,
+                    transformOrigin: "50% 50%",
+                    filter: hotspotImageFilter,
+                    mixBlendMode: hotspotMixBlendMode,
+                    position: isS1ClusterKey ? "relative" : undefined,
+                    zIndex: isS1ClusterKey ? 30 : undefined,
+                    transition: "transform 220ms ease, opacity 220ms ease",
+                  }}
+                />
+
+                {!isS1Key && (
                   <div
-                    className="worldMarkerLabel"
+                    aria-hidden
                     style={{
-                      left: `${labelLeftPct}%`,
-                      top: `${labelTopPct}%`,
-                      opacity: p.opacity,
-                      fontSize: `${Math.max(9, 9.5 * p.scale)}px`,
-                      pointerEvents: isPickableThis ? "auto" : "none",
-                      cursor: isPickableThis ? "pointer" : "default",
-                      zIndex: isPickableThis ? 50 : undefined,
-                      touchAction: isPickableThis ? "manipulation" : undefined,
-                      minHeight: isPickableThis ? 36 : undefined,
-                      padding: isPickableThis ? "10px 12px" : undefined,
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0.72,
+                      background: OBJECT_VISUAL_TUNING.contactOverlay,
+                      mixBlendMode: "multiply",
+                      filter: "blur(0.2px)",
+                      clipPath: "ellipse(58% 44% at 50% 86%)",
+                      transform: `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`,
+                      transformOrigin: "50% 50%",
                     }}
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!isPickableThis) return;
-                      onOpenClue(obj.key);
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!isPickableThis) return;
-                      onOpenClue(obj.key);
-                    }}
-                    role="button"
-                    tabIndex={isPickableThis ? 0 : -1}
-                    onKeyDown={(e) => {
-                      if (!isPickableThis) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onOpenClue(obj.key);
-                      }
-                    }}
-                  >
-                    {obj.label}
-                  </div>
-                </React.Fragment>
-              );
-            })}
-          </div>
-
-          <div className="fogLayer" style={{ transform: `translateX(${cameraPos * 0.03}px)` }} />
-
-          <div className="beachOverlay">
-            <div className="goalBeacon">
-              <span className="goalDot" />
-              <span className="goalArrow">↑</span>
-              <span>{beachTargetHint}</span>
-            </div>
-
-            {canEnterTunnel && (
-              <div className="interactPop" style={{ bottom: 138, borderColor: "rgba(255,60,70,.20)" }}>
-                Kırmızı ışık aktif — <b>E</b> / Tünele Gir
+                  />
+                )}
               </div>
-            )}
-          </div>
+            </button>
+          );
+        })}
+      </div>
 
-          <div
-            className={`tamayRig ${moveDir !== 0 && !selectedClue ? "walking" : ""}`}
+      <div
+        style={{
+          position: "absolute",
+          left: 12,
+          bottom: 12,
+          zIndex: 20,
+          padding: "8px 10px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,.18)",
+          background: "rgba(5,8,12,.72)",
+          color: "#eef2fb",
+          fontSize: 12,
+          lineHeight: 1.4,
+        }}
+      >
+        <div>run: {runLabel}</div>
+        <div>scene: {activeSceneId}</div>
+        <div>collected: {collectedCount}/{allCollectibleCount}</div>
+        <div>bg: {bgName}</div>
+        {isDev && (
+          <div>
+            POS={posMode ? "ON" : "OFF"} {activeSceneId} pos: {getHotspotPosition(activeSceneHotspots[0]).left.toFixed(1)},{getHotspotPosition(activeSceneHotspots[0]).top.toFixed(1)}
+          </div>
+        )}
+        {isDev && activeSceneId === "S1" && <div>S1 items visible: {s1ItemsVisibleCount}</div>}
+      </div>
+
+      {isDev && (
+        <button
+          type="button"
+          onClick={() => setPosMode((prev) => !prev)}
+          style={{
+            position: "fixed",
+            top: 12,
+            left: 12,
+            zIndex: 24,
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,.28)",
+            background: posMode ? "rgba(74,180,120,.32)" : "rgba(8,12,18,.88)",
+            color: "#eef2fb",
+            fontSize: 12,
+            fontWeight: 800,
+            padding: "8px 12px",
+            minHeight: 36,
+            minWidth: 88,
+            cursor: "pointer",
+            touchAction: "manipulation",
+            boxShadow: "0 8px 18px rgba(0,0,0,.3)",
+          }}
+        >
+          POS: {posMode ? "ON" : "OFF"}
+        </button>
+      )}
+
+      {isDev && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 21,
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,.26)",
+            background: "rgba(8,12,18,.82)",
+            color: "#eef2fb",
+            padding: 8,
+            display: "grid",
+            gap: 6,
+            minWidth: 126,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.8, letterSpacing: ".04em" }}>TEST PANEL</div>
+          <button
+            type="button"
+            onClick={devNext}
             style={{
-              transform: `translate(calc(-50% + ${(tamayX + tamayWorldX * BEACH_TAMAY_WORLD_TO_SCREEN_X).toFixed(2)}px), calc(${tamayLift + bob}px)) scale(${tamayScale})`,
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,.26)",
+              background: "rgba(6,10,16,.92)",
+              color: "#eef2fb",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "8px 10px",
+              minHeight: 34,
+              width: "100%",
+              cursor: "pointer",
+              touchAction: "manipulation",
             }}
           >
-            <div
-              className="shadow"
-              style={{
-                width: `${92 + Math.abs(stride) * 4}px`,
-                opacity: 0.65 - moveStrength * 0.08,
-              }}
-            />
-            <div className="legL" />
-            <div className="legR" />
-            <div className="torso" />
-            <div className="shoulderL" />
-            <div className="shoulderR" />
-            <div className="armL" />
-            <div className="armR" />
-            <div className="hood" />
-            <div className="hair" />
-          </div>
-
-          <div className="beachControls">
-            <div className="pad">
-              <button
-                className="moveBtn"
-                type="button"
-                title="Ileri"
-                onPointerDown={() => !selectedClue && onMoveDir(1)}
-                onPointerUp={() => onMoveDir(0)}
-                onPointerLeave={() => onMoveDir(0)}
-                onPointerCancel={() => onMoveDir(0)}
-              >
-                &uarr;
-              </button>
-              <button
-                className="moveBtn"
-                type="button"
-                title="Geri"
-                onPointerDown={() => !selectedClue && onMoveDir(-1)}
-                onPointerUp={() => onMoveDir(0)}
-                onPointerLeave={() => onMoveDir(0)}
-                onPointerCancel={() => onMoveDir(0)}
-              >
-                &darr;
-              </button>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="moveBtn"
-                  type="button"
-                  title="Sol"
-                  onPointerDown={() => startStrafe(-1)}
-                  onPointerUp={stopStrafe}
-                  onPointerLeave={stopStrafe}
-                  onPointerCancel={stopStrafe}
-                >
-                  &#9664;
-                </button>
-                <button
-                  className="moveBtn"
-                  type="button"
-                  title="Sag"
-                  onPointerDown={() => startStrafe(1)}
-                  onPointerUp={stopStrafe}
-                  onPointerLeave={stopStrafe}
-                  onPointerCancel={stopStrafe}
-                >
-                  &#9654;
-                </button>
-              </div>
-            </div>
-
-            <div className="beachActionCol">
-              <div className="miniBadge">Klavye: W/S veya Yukari/Asagi | A/D veya Sol/Sag Ok | E: Incele / Tunel</div>
-              <div className="miniBadge">Mobil: Yukari/Asagi ve Sol/Sag tuslari veya yukari/asagi kaydir</div>
-
-              {canOpenBeachPuzzle && (
-                <button className="btn" type="button" onClick={onOpenBeachPuzzle}>
-                  Sifre Paneli
-                </button>
-              )}
-
-              {canEnterTunnel && (
-                <button className="btn danger" type="button" onClick={onEnterTunnel}>
-                  Tünele Gir
-                </button>
-              )}
-
-              {onOpenWorld && (
-                <button className="btn" type="button" onClick={onOpenWorld}>
-                  🌍 Açık Dünya
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </main>
-
-      <footer className="panel hint">
-        <div className="hintLabel">İç Ses</div>
-        <div className="hintText">{beachHint}</div>
-
-        <div className="journalBtnRow">
-          <div className="muted">
-            Toplanan kayıtlar: {beachObjectsSolvedList.length ? beachObjectsSolvedList.join(" • ") : "Henüz yok"}
-          </div>
-          <button className="btn ghost" type="button" onClick={onToggleJournal}>
-            {journalOpen ? "Günlüğü Gizle" : "Günlüğü Aç"}
+            NEXT
           </button>
         </div>
+      )}
 
-        {journalOpen && (
-          <>
-            <div className="divider" />
-            <div className="journalGrid">
-              {pathObjects.map((o) => (
-                <div className={`journalItem ${clues[o.key] ? "done" : ""}`} key={o.key}>
-                  <div className="journalLabel">
-                    {o.icon} {o.label}
-                  </div>
-                  <div className="journalState">{clues[o.key] ? "Çözüldü" : "Bulunmadı / Çözülmedi"}</div>
-                </div>
+      {isDev && posToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 56,
+            left: 12,
+            zIndex: 25,
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,.26)",
+            background: "rgba(10,14,20,.94)",
+            color: "#eef2fb",
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "8px 10px",
+            display: "grid",
+            gap: 8,
+            minWidth: 220,
+            boxShadow: "0 10px 24px rgba(0,0,0,.35)",
+          }}
+        >
+          <div style={{ userSelect: "text" }}>{posToast.label}</div>
+          <button
+            type="button"
+            onClick={onCopyPosToast}
+            style={{
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,.28)",
+              background: "rgba(255,255,255,.08)",
+              color: "#eef2fb",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "6px 10px",
+              minHeight: 30,
+              cursor: "pointer",
+              touchAction: "manipulation",
+            }}
+          >
+            Kopyala
+          </button>
+        </div>
+      )}
+
+      {transitionText && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "14%",
+            transform: "translateX(-50%)",
+            zIndex: 32,
+            width: "min(88vw, 620px)",
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.22)",
+            background: "rgba(6,10,15,.84)",
+            color: "#eef2fb",
+            fontSize: 14,
+            lineHeight: 1.35,
+            textAlign: "center",
+          }}
+        >
+          {transitionText}
+        </div>
+      )}
+
+      {s1PuzzleOpen && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 33,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(2,6,11,.82)",
+            padding: 14,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Anahtar Halkası"
+            style={{
+              width: "min(94vw, 640px)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.22)",
+              background: "rgba(11,15,22,.96)",
+              boxShadow: "0 20px 56px rgba(0,0,0,.5)",
+              padding: "16px 14px",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ color: "#eef2fb", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Anahtar Halkası</div>
+            <div style={{ color: "#d7e0f5", fontSize: 13, lineHeight: 1.35 }}>
+              Parçayı seç, sonra boş bir yuvaya dokun.
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                gap: 8,
+              }}
+            >
+              {s1PuzzleSlots.map((slotPiece, slotIndex) => (
+                <button
+                  key={`slot-${slotIndex}`}
+                  type="button"
+                  onClick={() => onS1SlotClick(slotIndex)}
+                  disabled={s1PuzzleAdvancing}
+                  style={{
+                    minHeight: 58,
+                    borderRadius: 12,
+                    border: "1px dashed rgba(255,255,255,.34)",
+                    background: slotPiece ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                    color: "#f2f5fb",
+                    fontSize: 20,
+                    fontWeight: 800,
+                    cursor: s1PuzzleAdvancing ? "default" : "pointer",
+                    touchAction: "manipulation",
+                  }}
+                >
+                  {slotPiece ?? "•"}
+                </button>
               ))}
             </div>
-          </>
-        )}
-      </footer>
+
+            <div style={{ color: "#d7e0f5", fontSize: 12, letterSpacing: ".04em", opacity: 0.88 }}>PARÇALAR</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                gap: 8,
+              }}
+            >
+              {S1_PUZZLE_PIECES.map((piece) => {
+                const isSelected = s1SelectedPiece === piece;
+                const isPlaced = s1PuzzleSlots.includes(piece) && !isSelected;
+                return (
+                  <button
+                    key={piece}
+                    type="button"
+                    onClick={() => onS1PieceSelect(piece)}
+                    disabled={s1PuzzleAdvancing}
+                    style={{
+                      minHeight: 56,
+                      borderRadius: 12,
+                      border: isSelected ? "1px solid rgba(132,196,255,.95)" : "1px solid rgba(255,255,255,.3)",
+                      background: isSelected
+                        ? "rgba(102,165,240,.26)"
+                        : isPlaced
+                          ? "rgba(255,255,255,.06)"
+                          : "rgba(255,255,255,.12)",
+                      color: "#f2f5fb",
+                      fontSize: 20,
+                      fontWeight: 800,
+                      opacity: isPlaced ? 0.7 : 1,
+                      cursor: s1PuzzleAdvancing ? "default" : "pointer",
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    {piece}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ color: "#eef2fb", fontSize: 13 }}>Seçili parça: {s1SelectedPiece ?? "Yok"}</div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (s1PuzzleAdvancing) return;
+                  setS1PuzzleStatus(null);
+                  setS1SelectedPiece(null);
+                  setS1PuzzleSlots([null, null, null, null, null]);
+                }}
+                disabled={s1PuzzleAdvancing}
+                style={{
+                  minHeight: 40,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,.28)",
+                  background: "rgba(255,255,255,.08)",
+                  color: "#eef2fb",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  padding: "0 12px",
+                  cursor: s1PuzzleAdvancing ? "default" : "pointer",
+                  touchAction: "manipulation",
+                }}
+              >
+                Sıfırla
+              </button>
+            </div>
+
+            {s1PuzzleStatus && (
+              <div
+                style={{
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,.18)",
+                  background:
+                    s1PuzzleStatus === "Anahtar kilidi hatırladı." ? "rgba(62,170,106,.26)" : "rgba(255,255,255,.08)",
+                  color: "#eef2fb",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  lineHeight: 1.35,
+                  padding: "10px 12px",
+                }}
+              >
+                {s1PuzzleStatus}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {overlayOpen && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 30,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(1,3,7,.74)",
+            padding: 16,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Nesneyi incele"
+            style={{
+              width: "min(92vw, 520px)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.22)",
+              background: "rgba(10,13,19,.95)",
+              boxShadow: "0 18px 56px rgba(0,0,0,.45)",
+              padding: "18px 18px 16px",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.75 }}>
+              {overlayTitle}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "center" }}>
+              <div
+                style={{
+                  width: 92,
+                  height: 92,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.2)",
+                  background: "rgba(0,0,0,.28)",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <img
+                  src={overlayTarget === "hatch" ? HATCH_STEP.hotspots[0].obj : (selectedHotspot?.obj ?? activeSceneHotspots[0].obj)}
+                  alt=""
+                  draggable={false}
+                  style={{ width: "80%", height: "80%", objectFit: "contain" }}
+                />
+              </div>
+
+              {isS1NotePanel ? (
+                <div style={{ color: "#eef2fb", fontSize: 14, lineHeight: 1.4, display: "grid", gap: 10 }}>
+                  <div>{overlayDescription}</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div
+                      aria-hidden
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        minHeight: 18,
+                      }}
+                    >
+                      <span style={{ width: 34, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
+                      <span style={{ width: 20, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
+                      <span style={{ width: 28, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
+                      <span style={{ width: 20, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
+                      <span style={{ width: 34, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.82 }}>uzun-kısa-orta-kısa-uzun</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: "#eef2fb", fontSize: 14, lineHeight: 1.4 }}>{overlayDescription}</div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={closeOverlay}
+              disabled={busy}
+              style={{
+                width: "100%",
+                minHeight: 46,
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,.24)",
+                background: overlayTarget === "hatch" ? "rgba(255,58,58,.22)" : "rgba(255,255,255,.08)",
+                color: "#eef2fb",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+                touchAction: "manipulation",
+              }}
+            >
+              {overlayButtonLabel}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 31,
+          background: "#000",
+          opacity: fadeOn ? 0.86 : 0,
+          pointerEvents: "none",
+          transition: `opacity ${FADE_HALF_MS}ms ease`,
+        }}
+      />
     </div>
   );
 }

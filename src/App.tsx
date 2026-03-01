@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLevelConfig } from "./game/levelConfig";
 import {
   CHECKPOINT_LEVEL,
@@ -49,7 +49,7 @@ export default function App() {
   const [clues, setClues] = useState<CluesState>(INITIAL_CLUES);
   const [selectedClue, setSelectedClue] = useState<ClueKey | null>(null);
   const [beachHint, setBeachHint] = useState(
-    "Tamay ayağa kalktı. Sisli yürüyüş yolunda eski deneklere ait izler var gibi..."
+    "Tamay ayaÄŸa kalktÄ±. Sisli yÃ¼rÃ¼yÃ¼ÅŸ yolunda eski deneklere ait izler var gibi..."
   );
   const [redLightUnlocked, setRedLightUnlocked] = useState(false);
   const [redLightPhase, setRedLightPhase] = useState<"IDLE" | "SHOW_TEXT" | "READY">("IDLE");
@@ -82,7 +82,7 @@ export default function App() {
   const [selectedDoor, setSelectedDoor] = useState<number | null>(null);
   const [selectedDoorOutcome, setSelectedDoorOutcome] = useState<DoorOutcome | null>(null);
   const [doorInputLocked, setDoorInputLocked] = useState(false);
-  const [doorHint, setDoorHint] = useState("Doğru kapıyı seç.");
+  const [doorHint, setDoorHint] = useState("DoÄŸru kapÄ±yÄ± seÃ§.");
   const [lastOutcome, setLastOutcome] = useState<DoorOutcome | null>(null);
   const [doorHitPulseKey, setDoorHitPulseKey] = useState(0);
 
@@ -167,17 +167,17 @@ export default function App() {
 
   const targetHint = useMemo(() => {
     if (scene !== "BEACH") return "";
-    if (canEnterTunnel) return "Hedef: Tünel girişi hazır (E)";
+    if (canEnterTunnel) return "Hedef: TÃ¼nel giriÅŸi hazÄ±r (E)";
     if (!allCluesFound) {
-      if (interactableObject && !clues[interactableObject.key]) return `Yakın: ${interactableObject.label} (E)`;
+      if (interactableObject && !clues[interactableObject.key]) return `YakÄ±n: ${interactableObject.label} (E)`;
       if (nextUnsolvedObject) {
         const dir = nextUnsolvedObject.obj.pos > tamayPos ? "ileride" : "geride";
         return `Sonraki hedef: ${nextUnsolvedObject.obj.label} (${Math.round(nextUnsolvedObject.dist)}m, ${dir})`;
       }
-      return "Hedef aranıyor...";
+      return "Hedef aranÄ±yor...";
     }
     const distToTunnel = Math.max(0, Math.round(TUNNEL_POS - tamayPos));
-    return `Kırmızı ışık aktif. Tünel ${distToTunnel}m`;
+    return `KÄ±rmÄ±zÄ± Ä±ÅŸÄ±k aktif. TÃ¼nel ${distToTunnel}m`;
   }, [scene, canEnterTunnel, allCluesFound, interactableObject, clues, nextUnsolvedObject, tamayPos]);
 
   const beachTargetHint = useMemo(() => {
@@ -189,8 +189,8 @@ export default function App() {
   }, [canEnterTunnel, allCluesFound, beachGateUnlocked, tamayPos, targetHint]);
 
   const beachPuzzleStatusLabel = allCluesFound
-    ? "Şifre Paneli: Hazır"
-    : "Şifre Paneli: Kilitli (önce 5/5 ipucu)";
+    ? "Åifre Paneli: HazÄ±r"
+    : "Åifre Paneli: Kilitli (Ã¶nce 5/5 ipucu)";
 
   const addTimeout = useCallback((fn: () => void, ms: number) => {
     const id = window.setTimeout(fn, ms);
@@ -246,7 +246,7 @@ export default function App() {
 
     setClues(INITIAL_CLUES);
     setSelectedClue(null);
-    setBeachHint("Tamay ayağa kalktı. Sisli yürüyüş yolunda eski deneklere ait izler var gibi...");
+    setBeachHint("Tamay ayaÄŸa kalktÄ±. Sisli yÃ¼rÃ¼yÃ¼ÅŸ yolunda eski deneklere ait izler var gibi...");
     setRedLightUnlocked(false);
     setRedLightPhase("IDLE");
     setTamayPos(START_POS);
@@ -274,7 +274,7 @@ export default function App() {
     setSelectedDoorOutcome(null);
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
-    setDoorHint("Kat 1 / Oda 1/3 — Doğru kapıyı seç.");
+    setDoorHint("Kat 1 / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.");
     setLastOutcome(null);
   };
 
@@ -285,7 +285,7 @@ export default function App() {
 
   const skipIntro = useCallback(() => {
     setIntroStep(introLines.length - 1);
-    setScene("BEACH_WORLD");
+    setScene("BEACH");
   }, []);
 
   const jumpToBeachWorld = useCallback(() => {
@@ -293,7 +293,7 @@ export default function App() {
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
-    setScene("BEACH_WORLD");
+    setScene("BEACH");
   }, [clearAllTimeouts]);
 
   const jumpToTunnel = useCallback(() => {
@@ -321,7 +321,7 @@ export default function App() {
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
-    setDoorHint("Kat 1 / Oda 1/3 — Doğru kapıyı seç.");
+    setDoorHint("Kat 1 / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.");
     setScene("DOOR_GAME");
   }, [clearAllTimeouts]);
 
@@ -369,7 +369,7 @@ export default function App() {
       const dt = Math.min(34, now - last);
       last = now;
 
-      const speed = moveDir === 1 ? 0.034 : 0.03; // ileri biraz daha güçlü
+      const speed = moveDir === 1 ? 0.034 : 0.03; // ileri biraz daha gÃ¼Ã§lÃ¼
       setTamayPos((p) => clamp(p + moveDir * dt * speed, 5, PATH_LEN - 4));
 
       raf = window.requestAnimationFrame(tick);
@@ -403,7 +403,7 @@ export default function App() {
 
       setCameraPos((prev) => {
         const tPos = tamayPosRef.current;
-        // hafif ileri bakış + gecikmeli takip
+        // hafif ileri bakÄ±ÅŸ + gecikmeli takip
         const forwardLook = dir === 1 ? 6 : dir === -1 ? -1.5 : 2;
         const target = clamp(tPos - 18 + forwardLook, 0, PATH_LEN - PATH_VIEW);
         const lerp = 1 - Math.exp(-dt * 0.08);
@@ -425,13 +425,13 @@ export default function App() {
 
     setRedLightUnlocked(true);
     setRedLightPhase("SHOW_TEXT");
-    setBeachHint("Yolun sonunda kırmızı ışık güçleniyor. Sanki bir çağrı sinyali...");
+    setBeachHint("Yolun sonunda kÄ±rmÄ±zÄ± Ä±ÅŸÄ±k gÃ¼Ã§leniyor. Sanki bir Ã§aÄŸrÄ± sinyali...");
     triggerShake(1);
 
-    addTimeout(() => setBeachHint("Tamay içinden mırıldanır: 'Bu işaret beni oraya çekiyor.'"), 1100);
+    addTimeout(() => setBeachHint("Tamay iÃ§inden mÄ±rÄ±ldanÄ±r: 'Bu iÅŸaret beni oraya Ã§ekiyor.'"), 1100);
     addTimeout(() => {
       setRedLightPhase("READY");
-      setBeachHint("5/5 hikâye parçası toplandı. İleri git ve tünel girişine gir.");
+      setBeachHint("5/5 hikÃ¢ye parÃ§asÄ± toplandÄ±. Ä°leri git ve tÃ¼nel giriÅŸine gir.");
       triggerShake(1);
     }, 2300);
   }, [scene, allCluesFound, redLightUnlocked, triggerShake, addTimeout]);
@@ -495,7 +495,7 @@ export default function App() {
 
     const obj = objectByKey[key];
     const nextCount = inspectedCount + 1;
-    setBeachHint(`${obj.label} çözüldü (${nextCount}/5). ${obj.shortHint}`);
+    setBeachHint(`${obj.label} Ã§Ã¶zÃ¼ldÃ¼ (${nextCount}/5). ${obj.shortHint}`);
   };
 
   const pushBeachDigit = (digit: string) => {
@@ -539,7 +539,7 @@ export default function App() {
       openBeachPuzzle();
       return;
     }
-    setBeachHint("Tamay kırmızı ışığın altındaki servis geçidine giriyor...");
+    setBeachHint("Tamay kÄ±rmÄ±zÄ± Ä±ÅŸÄ±ÄŸÄ±n altÄ±ndaki servis geÃ§idine giriyor...");
     goWithFade("TUNNEL");
   }, [allCluesFound, canUseTunnelGate, beachGateUnlocked, openBeachPuzzle, goWithFade]);
 
@@ -609,7 +609,7 @@ export default function App() {
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
-    setDoorHint("Kat 1 / Oda 1/3 — Doğru kapıyı seç.");
+    setDoorHint("Kat 1 / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.");
 
     goWithFade("DOOR_GAME");
   };
@@ -640,7 +640,7 @@ export default function App() {
       const clearsEpisode = clearsFloor && level >= episodeMaxFloor;
 
       if (clearsEpisode) {
-        setDoorHint("Kat 5 tamamlandı. Asansör hattı açılıyor.");
+        setDoorHint("Kat 5 tamamlandÄ±. AsansÃ¶r hattÄ± aÃ§Ä±lÄ±yor.");
         addTimeout(() => {
           setDoorInputLocked(false);
           setScene("WIN");
@@ -653,8 +653,8 @@ export default function App() {
 
       setDoorHint(
         clearsFloor
-          ? `Kat ${nextLevel} açıldı. Oda 1/3 başlıyor.`
-          : `Doğru kapı. Oda ${nextRoom}/3 açıldı.`
+          ? `Kat ${nextLevel} aÃ§Ä±ldÄ±. Oda 1/3 baÅŸlÄ±yor.`
+          : `DoÄŸru kapÄ±. Oda ${nextRoom}/3 aÃ§Ä±ldÄ±.`
       );
 
       addTimeout(() => {
@@ -663,7 +663,7 @@ export default function App() {
         if (nextLevel >= CHECKPOINT_LEVEL) setCheckpointUnlocked(true);
         setCarryoverCurseActive(carryoverCursePending);
         setCarryoverCursePending(false);
-        prepareNextRoom(`Kat ${nextLevel} / Oda ${nextRoom}/3 — Doğru kapıyı seç.`);
+        prepareNextRoom(`Kat ${nextLevel} / Oda ${nextRoom}/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.`);
       }, 850);
       return;
     }
@@ -678,8 +678,8 @@ export default function App() {
 
     setDoorHint(
       outcome === "CURSE"
-        ? "Lanet kapısı. İki can kaybettin. Sonraki odada bozulma taşınacak."
-        : "Yanlış kapı. Bir can kaybettin."
+        ? "Lanet kapÄ±sÄ±. Ä°ki can kaybettin. Sonraki odada bozulma taÅŸÄ±nacak."
+        : "YanlÄ±ÅŸ kapÄ±. Bir can kaybettin."
     );
 
     // Wrong pick always rerolls this room immediately.
@@ -695,7 +695,7 @@ export default function App() {
       setSelectedDoorOutcome(null);
       setDoorHitPulseKey(0);
       setDoorInputLocked(false);
-      setDoorHint(`Kat ${level} / Oda ${room}/3 — Yeniden dene.`);
+      setDoorHint(`Kat ${level} / Oda ${room}/3 â€” Yeniden dene.`);
     }, 950);
   };
 
@@ -719,7 +719,7 @@ export default function App() {
     setCarryoverCurseActive(false);
     setCarryoverCursePending(false);
     setDoorHitPulseKey(0);
-    prepareNextRoom(`Kat ${CHECKPOINT_LEVEL} / Oda 1/3 — Doğru kapıyı seç.`);
+    prepareNextRoom(`Kat ${CHECKPOINT_LEVEL} / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.`);
   };
 
   const getDoorClassName = (index: number) => {
@@ -736,7 +736,7 @@ export default function App() {
 
   const getDoorVisualLabel = (index: number) => {
     if (selectedDoor !== index || !selectedDoorOutcome) return `KAPI ${index + 1}`;
-    if (selectedDoorOutcome === "SAFE") return "DOĞRU";
+    if (selectedDoorOutcome === "SAFE") return "DOÄRU";
     if (selectedDoorOutcome === "CURSE") return "LANET";
     return "YARATIK";
   };
@@ -806,7 +806,7 @@ export default function App() {
         const canSolve = puzzles.bandScrub >= 85;
         return (
           <div className="puzzleWrap">
-            <div className="smallText">Tuz ve kiri temizle. Kod görünür hale gelsin.</div>
+            <div className="smallText">Tuz ve kiri temizle. Kod gÃ¶rÃ¼nÃ¼r hale gelsin.</div>
             <div className="box">
               <div className="smallText">Temizlik: %{Math.round(puzzles.bandScrub)}</div>
               <input
@@ -818,14 +818,14 @@ export default function App() {
               />
             </div>
             <div className="smallText">
-              {puzzles.bandScrub < 40 ? "Kirli" : puzzles.bandScrub < 85 ? "Kod seçiliyor..." : "Kod netleşti: D-05"}
+              {puzzles.bandScrub < 40 ? "Kirli" : puzzles.bandScrub < 85 ? "Kod seÃ§iliyor..." : "Kod netleÅŸti: D-05"}
             </div>
             <div className="rowEnd">
               <button className="btn" onClick={closeClueModal} type="button">
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("band")} disabled={!canSolve} type="button">
-                Kaydı Al
+                KaydÄ± Al
               </button>
             </div>
           </div>
@@ -837,7 +837,7 @@ export default function App() {
         const canSolve = tuned && puzzles.recorderChecked;
         return (
           <div className="puzzleWrap">
-            <div className="smallText">Frekansı ayarla, sonra Dinle.</div>
+            <div className="smallText">FrekansÄ± ayarla, sonra Dinle.</div>
             <div className="box">
               <div className="smallText">Frekans: {Math.round(puzzles.recorderTune)}</div>
               <input
@@ -860,7 +860,7 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setPuzzles((p) => ({ ...p, recorderChecked: true }));
-                  setPuzzleFeedback(tuned ? "Ses kısa süreliğine netleşti." : "Hâlâ cızırtı var.");
+                  setPuzzleFeedback(tuned ? "Ses kÄ±sa sÃ¼reliÄŸine netleÅŸti." : "HÃ¢lÃ¢ cÄ±zÄ±rtÄ± var.");
                 }}
               >
                 Dinle
@@ -869,7 +869,7 @@ export default function App() {
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("recorder")} disabled={!canSolve} type="button">
-                Kaydı Al
+                KaydÄ± Al
               </button>
             </div>
           </div>
@@ -882,7 +882,7 @@ export default function App() {
             const next = [...p.noteSeq, n];
             const prefixOk = NOTE_TARGET.slice(0, next.length).every((v, i) => v === next[i]);
             if (!prefixOk) {
-              setPuzzleFeedback("Yanlış sıra. Parçalar dağıldı.");
+              setPuzzleFeedback("YanlÄ±ÅŸ sÄ±ra. ParÃ§alar daÄŸÄ±ldÄ±.");
               return { ...p, noteSeq: [] };
             }
             setPuzzleFeedback("");
@@ -892,16 +892,16 @@ export default function App() {
 
         return (
           <div className="puzzleWrap">
-            <div className="smallText">Parçaları doğru sırayla hizala. (Yanlışta sıfırlanır)</div>
-            <div className="box smallText">Sıra: {puzzles.noteSeq.length ? puzzles.noteSeq.join(" - ") : "boş"}</div>
+            <div className="smallText">ParÃ§alarÄ± doÄŸru sÄ±rayla hizala. (YanlÄ±ÅŸta sÄ±fÄ±rlanÄ±r)</div>
+            <div className="box smallText">SÄ±ra: {puzzles.noteSeq.length ? puzzles.noteSeq.join(" - ") : "boÅŸ"}</div>
             <div className="grid2">
               {[1, 2, 3, 4].map((n) => (
                 <button className="btn" key={n} type="button" onClick={() => push(n)} disabled={canSolveNote}>
-                  Parça {n}
+                  ParÃ§a {n}
                 </button>
               ))}
             </div>
-            <div className="smallText">İpucu: Köşedeki rüzgâr izi, 2. parçayı öne itiyor.</div>
+            <div className="smallText">Ä°pucu: KÃ¶ÅŸedeki rÃ¼zgÃ¢r izi, 2. parÃ§ayÄ± Ã¶ne itiyor.</div>
             <div className="rowEnd">
               <button
                 className="btn"
@@ -911,13 +911,13 @@ export default function App() {
                   setPuzzleFeedback("");
                 }}
               >
-                Sıfırla
+                SÄ±fÄ±rla
               </button>
               <button className="btn" onClick={closeClueModal} type="button">
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("note")} disabled={!canSolveNote} type="button">
-                Kaydı Al
+                KaydÄ± Al
               </button>
             </div>
           </div>
@@ -936,19 +936,19 @@ export default function App() {
 
         return (
           <div className="puzzleWrap">
-            <div className="smallText">4 haneli kodu gir. (İpucu: 5. kat + 10 döngü)</div>
+            <div className="smallText">4 haneli kodu gir. (Ä°pucu: 5. kat + 10 dÃ¶ngÃ¼)</div>
             <div className="pinRow">
               {(puzzles.phonePin + "____")
                 .slice(0, 4)
                 .split("")
                 .map((ch, i) => (
                   <div className="pinCell" key={i}>
-                    {ch === "_" ? "•" : ch}
+                    {ch === "_" ? "â€¢" : ch}
                   </div>
                 ))}
             </div>
             <div className="grid3">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "⌫"].map((k) => (
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "âŒ«"].map((k) => (
                 <button
                   className="btn"
                   key={String(k)}
@@ -959,7 +959,7 @@ export default function App() {
                       setPuzzleFeedback("");
                       return;
                     }
-                    if (k === "⌫") {
+                    if (k === "âŒ«") {
                       backspace();
                       return;
                     }
@@ -974,7 +974,7 @@ export default function App() {
               <button
                 className="btn"
                 type="button"
-                onClick={() => setPuzzleFeedback(canSolve ? "Kilit açıldı." : "Kod yanlış.")}
+                onClick={() => setPuzzleFeedback(canSolve ? "Kilit aÃ§Ä±ldÄ±." : "Kod yanlÄ±ÅŸ.")}
               >
                 Kontrol Et
               </button>
@@ -982,7 +982,7 @@ export default function App() {
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("phone")} disabled={!canSolve} type="button">
-                Kaydı Al
+                KaydÄ± Al
               </button>
             </div>
           </div>
@@ -993,7 +993,7 @@ export default function App() {
         const canSolve = puzzles.tagUv && puzzles.tagDial === 5;
         return (
           <div className="puzzleWrap">
-            <div className="smallText">Kadranı 5’e getir ve UV aç.</div>
+            <div className="smallText">KadranÄ± 5â€™e getir ve UV aÃ§.</div>
             <div className="box">
               <div style={{ fontSize: 26, fontWeight: 800, textAlign: "center" }}>{puzzles.tagDial}</div>
               <div className="grid3">
@@ -1016,19 +1016,19 @@ export default function App() {
                   type="button"
                   onClick={() => setPuzzles((p) => ({ ...p, tagUv: !p.tagUv }))}
                 >
-                  UV {puzzles.tagUv ? "Açık" : "Kapalı"}
+                  UV {puzzles.tagUv ? "AÃ§Ä±k" : "KapalÄ±"}
                 </button>
               </div>
             </div>
             <div className="smallText">
-              {puzzles.tagUv ? (puzzles.tagDial === 5 ? "Yazı beliriyor..." : "UV var ama hizalama yanlış.") : "UV kapalı"}
+              {puzzles.tagUv ? (puzzles.tagDial === 5 ? "YazÄ± beliriyor..." : "UV var ama hizalama yanlÄ±ÅŸ.") : "UV kapalÄ±"}
             </div>
             <div className="rowEnd">
               <button className="btn" onClick={closeClueModal} type="button">
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("tag")} disabled={!canSolve} type="button">
-                Kaydı Al
+                KaydÄ± Al
               </button>
             </div>
           </div>
@@ -1039,19 +1039,19 @@ export default function App() {
 
   const renderBeachPuzzleContent = () => (
     <div className="puzzleWrap">
-      <div className="smallText">Önce 5 ipucunu topla.</div>
-      <div className="smallText">İpuçlarındaki rakamları doğru sırayla gir.</div>
-      <div className="smallText">Etkileşim: E</div>
+      <div className="smallText">Ã–nce 5 ipucunu topla.</div>
+      <div className="smallText">Ä°puÃ§larÄ±ndaki rakamlarÄ± doÄŸru sÄ±rayla gir.</div>
+      <div className="smallText">EtkileÅŸim: E</div>
       <div className="smallText">Toplanan ipucu: {inspectedCount}/5</div>
       <div className="box">
-        <div className="smallText">Şifre Girdisi</div>
+        <div className="smallText">Åifre Girdisi</div>
         <div className="pinRow">
           {(beachPuzzleInput + "_".repeat(BEACH_PUZZLE_CODE.length))
             .slice(0, BEACH_PUZZLE_CODE.length)
             .split("")
             .map((ch, idx) => (
               <div className="pinCell" key={`beach-pin-${idx}`}>
-                {ch === "_" ? "•" : ch}
+                {ch === "_" ? "â€¢" : ch}
               </div>
             ))}
         </div>
@@ -1102,7 +1102,7 @@ export default function App() {
     const y = e.touches[0]?.clientY ?? touchYRef.current;
     const delta = y - touchYRef.current;
     if (Math.abs(delta) < 8) return;
-    setMoveDir(delta < 0 ? 1 : -1); // yukarı kaydır = ileri
+    setMoveDir(delta < 0 ? 1 : -1); // yukarÄ± kaydÄ±r = ileri
     touchYRef.current = y;
   };
 
@@ -1123,7 +1123,7 @@ export default function App() {
             introLines={introLines}
             onAdvance={() => {
               if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
-              else setScene("BEACH_WORLD");
+              else setScene("BEACH");
             }}
             onSkip={skipIntro}
           />
@@ -1141,7 +1141,7 @@ export default function App() {
               touchAction: "manipulation",
             }}
           >
-            İntroyu Geç
+            Ä°ntroyu GeÃ§
           </button>
         </>
       )}
@@ -1181,22 +1181,43 @@ export default function App() {
           onMoveDir={setMoveDir}
           onOpenClue={openClue}
           onOpenBeachPuzzle={openBeachPuzzle}
-          onEnterTunnel={startBeachToTunnel}
+          onEnterTunnel={() => goWithFade("TUNNEL")}
           beachHint={beachHint}
           beachObjectsSolvedList={beachObjectsSolvedList}
           journalOpen={journalOpen}
           onToggleJournal={() => setJournalOpen((v) => !v)}
-          onOpenWorld={() => setScene("BEACH_WORLD")}
+          onOpenWorld={() => setScene("BEACH")}
         />
       )}
 
       {scene === "BEACH_WORLD" && (
-        <BeachWorld
-          onBack={retryToMenu}
-          onEnterTunnel={() => goWithFade("TUNNEL")}
-          devToolsEnabled={devToolsEnabled}
-          onSkipToDoorGame={jumpToDoorGame}
-        />
+        <>
+          <BeachWorld
+            onBack={retryToMenu}
+            onEnterTunnel={() => goWithFade("TUNNEL")}
+            devToolsEnabled={devToolsEnabled}
+            onSkipToDoorGame={jumpToDoorGame}
+          />
+          {import.meta.env.DEV && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                pointerEvents: "none",
+                zIndex: 1390,
+                display: "grid",
+                placeItems: "center",
+                color: "rgba(255,255,255,.22)",
+                fontSize: "clamp(36px, 8vw, 92px)",
+                fontWeight: 900,
+                letterSpacing: ".08em",
+                textTransform: "uppercase",
+              }}
+            >
+              DEMO
+            </div>
+          )}
+        </>
       )}
 
       {scene === "TUNNEL" && (
@@ -1252,7 +1273,7 @@ export default function App() {
       )}
 
       {beachPuzzleOpen && (
-        <PuzzleModal clueLabel="Sahil Şifre Paneli" puzzleFeedback={beachPuzzleFeedback} onClose={closeBeachPuzzle}>
+        <PuzzleModal clueLabel="Sahil Åifre Paneli" puzzleFeedback={beachPuzzleFeedback} onClose={closeBeachPuzzle}>
           {renderBeachPuzzleContent()}
         </PuzzleModal>
       )}
@@ -1280,11 +1301,16 @@ export default function App() {
           <button className="btn ghost" type="button" onClick={jumpToBeachWorld}>
             Sahile Atla
           </button>
+          {import.meta.env.DEV && (
+            <button className="btn ghost" type="button" onClick={() => setScene("BEACH_WORLD")}>
+              Demo
+            </button>
+          )}
           <button className="btn ghost" type="button" onClick={jumpToTunnel}>
-            Tünele Atla
+            TÃ¼nele Atla
           </button>
           <button className="btn ghost" type="button" onClick={jumpToDoorGame}>
-            Kapılara Atla
+            KapÄ±lara Atla
           </button>
         </div>
       )}
@@ -1293,3 +1319,4 @@ export default function App() {
     </div>
   );
 }
+
