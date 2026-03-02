@@ -266,6 +266,7 @@ export function BeachScene({
   const [s1SelectedPiece, setS1SelectedPiece] = useState<S1PuzzlePiece | null>(null);
 
   const [posMode, setPosMode] = useState(false);
+  const [showHitboxDebug, setShowHitboxDebug] = useState(false);
   const [draggingHotspotId, setDraggingHotspotId] = useState<string | null>(null);
   const [devHotspotPositions, setDevHotspotPositions] = useState<Record<string, HotspotPosition>>({});
   const [posToast, setPosToast] = useState<PosToast | null>(null);
@@ -438,11 +439,17 @@ export function BeachScene({
     schedule(() => {
       setS1PuzzleOpen(false);
       setS1PuzzleAdvancing(false);
-      runFade(() => {
-        setStepIndex(1);
-      });
+      setTransitionText("Kilit çözüldü. Tunnel açılıyor...");
+      runFade(
+        () => {
+          onEnterTunnel();
+        },
+        () => {
+          setTransitionText(null);
+        }
+      );
     }, 700);
-  }, [runFade, schedule]);
+  }, [onEnterTunnel, runFade, schedule]);
 
   const onS1SlotClick = useCallback(
     (index: number) => {
@@ -1006,7 +1013,7 @@ export function BeachScene({
         >
           {b0HitboxHotspots.map((hotspot) => {
             const hitbox = B0_HITBOXES[hotspot.id];
-            const showDebug = isDev;
+            const showDebug = isDev && showHitboxDebug;
 
             return (
               <button
@@ -1159,6 +1166,25 @@ export function BeachScene({
             }}
           >
             NEXT
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowHitboxDebug((prev) => !prev)}
+            style={{
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,.26)",
+              background: showHitboxDebug ? "rgba(190,52,52,.28)" : "rgba(6,10,16,.92)",
+              color: "#eef2fb",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "8px 10px",
+              minHeight: 34,
+              width: "100%",
+              cursor: "pointer",
+              touchAction: "manipulation",
+            }}
+          >
+            HITBOX: {showHitboxDebug ? "ON" : "OFF"}
           </button>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { usePreferredAssetPath } from "../game/usePreferredAssetPath";
 
 type TunnelSceneProps = {
   worldShakeClass: string;
@@ -15,7 +16,19 @@ type WallWriting = {
 
 const PROGRESS_ADVANCE_RATE = 19;
 const PROGRESS_REVERSE_RATE = 8;
-const DENEME_REVEAL_MS = 1600;
+const MILESTONE_REVEAL_MS = 850;
+const TUNNEL_BG_CANDIDATES = [
+  "/assets/img/tunnel/bg.svg",
+  "/images/scenes/tunnel_bg.png",
+] as const;
+
+const GLITCH_MILESTONES = [
+  { threshold: 20, text: "DENEME" },
+  { threshold: 50, text: "KAPI" },
+  { threshold: 70, text: "HATIRLA" },
+  { threshold: 90, text: "GERİ DÖNME" },
+  { threshold: 95, text: "GERİ DÖNME" },
+] as const;
 
 const WALL_WRITINGS: WallWriting[] = [
   { id: "w1", early: "KAYIT 03 // D?NEME BASLADI", late: "KAYIT 03 // DENEME BASLADI" },
@@ -64,18 +77,21 @@ export function TunnelScene({
   devToolsEnabled = false,
   onSkipToDoorGame,
 }: TunnelSceneProps) {
+  const tunnelBgPath = usePreferredAssetPath(TUNNEL_BG_CANDIDATES);
   const [progress, setProgress] = useState(0);
   const [isAdvancing, setIsAdvancing] = useState(false);
-  const [showDeneme, setShowDeneme] = useState(false);
-  const [denemeImpactActive, setDenemeImpactActive] = useState(false);
+  const [glitchWord, setGlitchWord] = useState("");
+  const [glitchWordVisible, setGlitchWordVisible] = useState(false);
+  const [glitchWordKey, setGlitchWordKey] = useState(0);
+  const [glitchImpactActive, setGlitchImpactActive] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
   const [glitchTick, setGlitchTick] = useState(0);
   const [doorBlinking, setDoorBlinking] = useState(false);
 
   const animationFrameRef = useRef<number>(0);
   const lastFrameTimeRef = useRef(0);
-  const denemeTimerRef = useRef<number>();
-  const denemeImpactTimerRef = useRef<number>();
+  const glitchWordTimerRef = useRef<number>();
+  const glitchImpactTimerRef = useRef<number>();
   const flashTimerRef = useRef<number>();
   const flashEndTimerRef = useRef<number>();
   const glitchIntervalRef = useRef<number>();
@@ -83,7 +99,7 @@ export function TunnelScene({
   const keyForwardRef = useRef(false);
   const keyBackwardRef = useRef(false);
   const touchForwardRef = useRef(false);
-  const denemeShownRef = useRef(false);
+  const shownMilestonesRef = useRef<Set<number>>(new Set());
   const doorRevealTriggeredRef = useRef(false);
 
   const syncAdvanceState = useCallback(() => {
@@ -163,20 +179,32 @@ export function TunnelScene({
   }, [syncAdvanceState]);
 
   useEffect(() => {
-    if (progress < 70 || denemeShownRef.current) return;
+    let nextMilestoneWord: string | null = null;
 
-    denemeShownRef.current = true;
-    setShowDeneme(true);
-    setDenemeImpactActive(true);
+    GLITCH_MILESTONES.forEach((milestone, index) => {
+      if (progress >= milestone.threshold && !shownMilestonesRef.current.has(index)) {
+        shownMilestonesRef.current.add(index);
+        nextMilestoneWord = milestone.text;
+      }
+    });
 
-    if (denemeTimerRef.current) window.clearTimeout(denemeTimerRef.current);
-    if (denemeImpactTimerRef.current) window.clearTimeout(denemeImpactTimerRef.current);
-    denemeTimerRef.current = window.setTimeout(() => {
-      setShowDeneme(false);
-    }, DENEME_REVEAL_MS);
-    denemeImpactTimerRef.current = window.setTimeout(() => {
-      setDenemeImpactActive(false);
-    }, 200);
+    if (!nextMilestoneWord) return;
+
+    setGlitchWord(nextMilestoneWord);
+    setGlitchWordVisible(true);
+    setGlitchWordKey((prev) => prev + 1);
+    setGlitchImpactActive(true);
+
+    if (glitchWordTimerRef.current) window.clearTimeout(glitchWordTimerRef.current);
+    if (glitchImpactTimerRef.current) window.clearTimeout(glitchImpactTimerRef.current);
+
+    glitchWordTimerRef.current = window.setTimeout(() => {
+      setGlitchWordVisible(false);
+    }, MILESTONE_REVEAL_MS);
+
+    glitchImpactTimerRef.current = window.setTimeout(() => {
+      setGlitchImpactActive(false);
+    }, 220);
   }, [progress]);
 
   useEffect(() => {
@@ -241,8 +269,8 @@ export function TunnelScene({
 
   useEffect(() => {
     return () => {
-      if (denemeTimerRef.current) window.clearTimeout(denemeTimerRef.current);
-      if (denemeImpactTimerRef.current) window.clearTimeout(denemeImpactTimerRef.current);
+      if (glitchWordTimerRef.current) window.clearTimeout(glitchWordTimerRef.current);
+      if (glitchImpactTimerRef.current) window.clearTimeout(glitchImpactTimerRef.current);
       if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
       if (flashEndTimerRef.current) window.clearTimeout(flashEndTimerRef.current);
       if (glitchIntervalRef.current) window.clearInterval(glitchIntervalRef.current);
@@ -251,6 +279,7 @@ export function TunnelScene({
   }, []);
 
   const handleAdvanceStart = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     touchForwardRef.current = true;
     syncAdvanceState();
@@ -300,8 +329,17 @@ export function TunnelScene({
     return "Gecis acik. Devam etmek icin onay ver.";
   }, [progress]);
 
+  const tunnelScreenStyle = tunnelBgPath
+    ? {
+      backgroundImage: `url("${tunnelBgPath}")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+    }
+    : undefined;
+
   return (
-    <div className="screen">
+    <div className="screen tunnelScreen" style={tunnelScreenStyle}>
       <header className="panel hud tunnelHud">
         <div>
           <div className="hudSub">Gecis</div>
@@ -328,9 +366,10 @@ export function TunnelScene({
       <main className={`world ${worldShakeClass} tunnelWorld tunnelWorld--${glitchClass}`} aria-label="Tunel">
         <div className="worldSurface">
           <div className="tunnelBg" />
+          <div className="tunnelVignette" />
           <div className="tunnelNoise" />
           <div className={`tunnelFlash ${flashActive ? "active" : ""}`} />
-          <div className={`tunnelRevealImpact ${denemeImpactActive ? "active" : ""}`} />
+          <div className={`tunnelRevealImpact ${glitchImpactActive ? "active" : ""}`} />
 
           <div className="tunnelPerspective">
             <div className="wallL" />
@@ -360,7 +399,7 @@ export function TunnelScene({
               disabled={!canContinue}
             >
               <div className="pill" style={{ background: "rgba(8,11,16,.45)" }}>
-                ÇIKIŞ?
+                CIKIS?
               </div>
             </button>
 
@@ -371,7 +410,11 @@ export function TunnelScene({
             </div>
           </div>
 
-          {showDeneme && <div className="tunnelWordReveal">DENEME</div>}
+          {glitchWordVisible && (
+            <div key={glitchWordKey} className="tunnelWordReveal">
+              {glitchWord}
+            </div>
+          )}
 
           <div className="fogLayer" />
 
@@ -379,12 +422,13 @@ export function TunnelScene({
             <button
               className={`tunnelAdvanceBtn ${isAdvancing ? "active" : ""}`}
               type="button"
+              aria-label="İLERLE basılı tut"
               onPointerDown={handleAdvanceStart}
               onPointerUp={handleAdvanceEnd}
               onPointerCancel={handleAdvanceEnd}
               onPointerLeave={handleAdvanceEnd}
             >
-              İLERLE
+              İLERLE (BASILI TUT)
             </button>
           </div>
 

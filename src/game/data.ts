@@ -1,10 +1,10 @@
 import type { ClueKey, PathObject } from "./types";
 
 export const introLines = [
-  "Tamay, yoÄŸun bir iÅŸ gÃ¼nÃ¼nÃ¼n ardÄ±ndan evde bilgisayar baÅŸÄ±nda freelance aldÄ±ÄŸÄ± iÅŸi yetiÅŸtirmeye Ã§alÄ±ÅŸÄ±yordu.",
-  "Bir anda monitÃ¶r titredi; ekran karardÄ± ve bozuk semboller ekranda gÃ¶rÃ¼ndÃ¼.",
-  "Sonra, ekranda insan gÃ¶zÃ¼ne benzemeyen soÄŸuk bir Ã§ift gÃ¶z belirdi; korkudan nefesi kesildi.",
-  "GÃ¶zlerini aÃ§tÄ±ÄŸÄ±nda soÄŸuk kumdaydÄ±; sis iÃ§inde yanÄ±p sÃ¶nen kÄ±rmÄ±zÄ± Ä±ÅŸÄ±k onu sahile Ã§aÄŸÄ±rÄ±yordu.",
+  "Tamay, yoğun bir iş gününün ardından evde bilgisayar başında freelance aldığı işi yetiştirmeye çalışıyordu.",
+  "Bir anda monitör titredi; ekran karardı ve bozuk semboller ekranda göründü.",
+  "Sonra, ekranda insan gözüne benzemeyen soğuk bir çift göz belirdi; korkudan nefesi kesildi.",
+  "Gözlerini açtığında soğuk kumdaydı; sis içinde yanıp sönen kırmızı ışık onu sahile çağırıyordu.",
 ];
 
 export const pathObjects: PathObject[] = [

@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { usePreferredAssetPath } from "../game/usePreferredAssetPath";
 import type { LevelConfig } from "../game/types";
+
+type DoorEventOverlay = {
+  key: number;
+  kind: "SAFE" | "MONSTER" | "CURSE";
+  text: string;
+} | null;
 
 type DoorGameSceneProps = {
   worldShakeClass: string;
@@ -14,6 +21,7 @@ type DoorGameSceneProps = {
   doorCount: number;
   doorInputLocked: boolean;
   hitPulseKey: number;
+  eventOverlay: DoorEventOverlay;
   getDoorClassName: (index: number) => string;
   getDoorVisualLabel: (index: number) => string;
   onDoorPick: (index: number) => void;
@@ -21,6 +29,11 @@ type DoorGameSceneProps = {
   lastOutcome: "SAFE" | "MONSTER" | "CURSE" | null;
   levelConfig: LevelConfig;
 };
+
+const DOOR_BG_CANDIDATES = [
+  "/assets/img/rooms/bg.svg",
+  "/images/scenes/door_room_bg_v2.png.png",
+] as const;
 
 function ParticleLayer({ type }: { type: string }) {
   if (type === "none") return null;
@@ -61,7 +74,6 @@ function SystemMessageOverlay({ message, level }: { message?: string; level: num
     }
   }, [level, message]);
 
-  // On first mount
   useEffect(() => {
     if (!message) return;
     setText(message);
@@ -104,6 +116,7 @@ export function DoorGameScene({
   doorCount,
   doorInputLocked,
   hitPulseKey,
+  eventOverlay,
   getDoorClassName,
   getDoorVisualLabel,
   onDoorPick,
@@ -111,12 +124,13 @@ export function DoorGameScene({
   lastOutcome,
   levelConfig,
 }: DoorGameSceneProps) {
+  const doorBgPath = usePreferredAssetPath(DOOR_BG_CANDIDATES);
   const { effects, colors, theme, locationLabel, systemMessage } = levelConfig;
 
   const bgStyle = {
     background: `
       radial-gradient(ellipse at 50% 120%, ${colors.lightAccent}, transparent 55%),
-      linear-gradient(to bottom, ${colors.skyTop} 0%, ${colors.skyBottom} 100%)
+      linear-gradient(to bottom, rgba(8,10,16,.22) 0%, rgba(5,7,12,.62) 100%)
     `,
   };
 
@@ -128,10 +142,25 @@ export function DoorGameScene({
     background: `radial-gradient(ellipse at 50% 50%, transparent 40%, ${effects.vignetteColor} 100%)`,
   };
 
+  const eventOverlayClass = eventOverlay ? `doorEventOverlay--${eventOverlay.kind.toLowerCase()}` : "";
+  const doorScreenStyle = doorBgPath
+    ? {
+      backgroundImage: `url("${doorBgPath}")`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+    }
+    : undefined;
+
   return (
-    <div className={`screen doorScreen doorScreen--${theme} ${corruptionActive ? "corruptionActive" : ""}`}>
+    <div className={`screen doorScreen doorScreen--${theme} ${corruptionActive ? "corruptionActive" : ""}`} style={doorScreenStyle}>
       {hitPulseKey > 0 && <div key={hitPulseKey} className="hitPulse" aria-hidden="true" />}
-      {/* HUD */}
+      {eventOverlay && (
+        <div key={`${eventOverlay.kind}-${eventOverlay.key}`} className={`doorEventOverlay ${eventOverlayClass}`} aria-live="assertive">
+          <div className="doorEventOverlayText">{eventOverlay.text}</div>
+        </div>
+      )}
+
       <header className="panel hud">
         <div>
           <div className="hudSub">{locationLabel}</div>
@@ -153,33 +182,26 @@ export function DoorGameScene({
         </div>
       </header>
 
-      {/* WORLD */}
       <main className={`world ${worldShakeClass}`}>
         <div className="worldSurface">
-          {/* Dynamic Background */}
           <div className="gameBg" style={bgStyle} />
 
-          {/* Perspective room */}
           <div className="roomPerspective">
             <div className="roomWallL" style={{ background: colors.wallTone }} />
             <div className="roomWallR" style={{ background: colors.wallTone }} />
             <div className="roomBackWall" style={{ background: colors.wallTone }} />
             <div className="roomFloor" style={{ background: colors.floorTone }} />
 
-            {/* Fog layer */}
             {fogStyle && (
               <div className={`fogLayer fogLayer--${effects.fogDensity}`} style={fogStyle} />
             )}
 
-            {/* Scanlines */}
             {effects.scanlines && <div className="scanlinesOverlay" aria-hidden="true" />}
 
-            {/* Red accent light */}
             {effects.redLightIntensity !== "none" && (
               <div className={`redAccentLight redAccentLight--${effects.redLightIntensity}`} aria-hidden="true" />
             )}
 
-            {/* DOORS */}
             <div className="doorsWall">
               {Array.from({ length: doorCount }).map((_, i) => (
                 <button
@@ -197,31 +219,24 @@ export function DoorGameScene({
             <div className="playerShoulderOverlay" />
           </div>
 
-          {/* Vignette */}
           <div className="levelVignette" style={vignetteStyle} aria-hidden="true" />
 
-          {/* Particles */}
           <ParticleLayer type={effects.particles} />
-
-          {/* Glitch overlay */}
           <GlitchOverlay amount={effects.glitchAmount} />
-
-          {/* System message */}
           <SystemMessageOverlay message={systemMessage} level={level} />
         </div>
       </main>
 
-      {/* FOOTER HINT */}
       <footer className="panel hint">
         <div className="hintLabel">Durum</div>
         <div className="hintText">{doorHint}</div>
         <div className="muted">
-          1 doğru kapı • 1 lanet kapı (-2 can) • 3 yanlış kapı (-1 can)
+          1 doğru kapı • 1 lanet kapı (-2 can) • 3 yanlış/yaratık kapı (-1 can)
           {lastOutcome && (
             <>
               {" "}
               • Son seçim:{" "}
-              {lastOutcome === "SAFE" ? "✔ Doğru" : lastOutcome === "CURSE" ? "☠ Lanet" : "✗ Yanlış"}
+              {lastOutcome === "SAFE" ? "✔ Doğru" : lastOutcome === "CURSE" ? "☠ Lanet" : "✖ Yaratık"}
             </>
           )}
         </div>

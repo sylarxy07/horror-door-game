@@ -19,6 +19,7 @@ import type { ClueKey, CluesState, DoorOutcome, PathObject, PuzzleState, RoundLa
 import { clamp, createRoundLayout, getDoorOutcome } from "./game/utils";
 import { BeachScene } from "./scenes/BeachScene";
 import { BeachWorld } from "./scenes/BeachWorld";
+import { DemoEndScene } from "./scenes/DemoEndScene";
 import { DoorGameScene } from "./scenes/DoorGameScene";
 import { GameOverScene } from "./scenes/GameOverScene";
 import { IntroScene } from "./scenes/IntroScene";
@@ -27,9 +28,17 @@ import { PuzzleModal } from "./scenes/PuzzleModal";
 import { TunnelScene } from "./scenes/TunnelScene";
 import { WinScene } from "./scenes/WinScene";
 import "./game/game.css";
+import "./game/demo-overrides.css";
 
 const EPISODE_1_MAX_FLOOR = 5;
-const ROOMS_PER_FLOOR = 3;
+const ROOMS_PER_FLOOR = 1;
+const DOOR_GAME_START_HINT = "Kat 1 / Oda 1/1 - Dogru kapiyi sec.";
+
+type DoorEventOverlay = {
+  key: number;
+  kind: "SAFE" | "MONSTER" | "CURSE";
+  text: string;
+} | null;
 
 export default function App() {
   const episodeMaxFloor = Math.min(EPISODE_1_MAX_FLOOR, MAX_LEVEL);
@@ -83,12 +92,14 @@ export default function App() {
   const [selectedDoor, setSelectedDoor] = useState<number | null>(null);
   const [selectedDoorOutcome, setSelectedDoorOutcome] = useState<DoorOutcome | null>(null);
   const [doorInputLocked, setDoorInputLocked] = useState(false);
-  const [doorHint, setDoorHint] = useState("DoÄŸru kapÄ±yÄ± seÃ§.");
+  const [doorHint, setDoorHint] = useState(DOOR_GAME_START_HINT);
   const [lastOutcome, setLastOutcome] = useState<DoorOutcome | null>(null);
   const [doorHitPulseKey, setDoorHitPulseKey] = useState(0);
+  const [doorEventOverlay, setDoorEventOverlay] = useState<DoorEventOverlay>(null);
 
   const timeoutRefs = useRef<number[]>([]);
   const touchYRef = useRef<number | null>(null);
+  const doorEventCounterRef = useRef(0);
 
   // refs for smooth camera loop
   const tamayPosRef = useRef(tamayPos);
@@ -217,6 +228,30 @@ export default function App() {
     }
   }, [addTimeout]);
 
+  const showDoorEventOverlay = useCallback((
+    kind: "SAFE" | "MONSTER" | "CURSE",
+    text: string,
+    durationMs: number
+  ) => {
+    doorEventCounterRef.current += 1;
+    const key = doorEventCounterRef.current;
+    setDoorEventOverlay({ key, kind, text });
+    addTimeout(() => {
+      setDoorEventOverlay((current) => (current?.key === key ? null : current));
+    }, durationMs);
+  }, [addTimeout]);
+
+  const playStaticIfAvailable = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const staticAudio = new Audio("/audio/sfx/static.mp3");
+      staticAudio.volume = 0.12;
+      void staticAudio.play().catch(() => undefined);
+    } catch {
+      // optional placeholder sound
+    }
+  }, []);
+
   const triggerShake = useCallback((strength: 1 | 2) => {
     setShake(strength);
     addTimeout(() => setShake(0), strength === 2 ? 320 : 180);
@@ -275,8 +310,9 @@ export default function App() {
     setSelectedDoorOutcome(null);
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
-    setDoorHint("Kat 1 / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.");
+    setDoorHint(DOOR_GAME_START_HINT);
     setLastOutcome(null);
+    setDoorEventOverlay(null);
   };
 
   const startNewRun = () => {
@@ -324,7 +360,8 @@ export default function App() {
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
-    setDoorHint("Kat 1 / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.");
+    setDoorHint(DOOR_GAME_START_HINT);
+    setDoorEventOverlay(null);
     setScene("DOOR_GAME");
   }, [clearAllTimeouts]);
 
@@ -612,7 +649,8 @@ export default function App() {
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
-    setDoorHint("Kat 1 / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.");
+    setDoorHint(DOOR_GAME_START_HINT);
+    setDoorEventOverlay(null);
 
     goWithFade("DOOR_GAME");
   };
@@ -624,6 +662,7 @@ export default function App() {
     setDoorHitPulseKey(0);
     setDoorInputLocked(false);
     setLastOutcome(null);
+    setDoorEventOverlay(null);
     setDoorHint(message);
   };
 
@@ -639,40 +678,26 @@ export default function App() {
     setLastOutcome(outcome);
 
     if (outcome === "SAFE") {
-      const clearsFloor = room >= ROOMS_PER_FLOOR;
-      const clearsEpisode = clearsFloor && level >= episodeMaxFloor;
-
-      if (clearsEpisode) {
-        setDoorHint("Kat 5 tamamlandÄ±. AsansÃ¶r hattÄ± aÃ§Ä±lÄ±yor.");
-        addTimeout(() => {
-          setDoorInputLocked(false);
-          setScene("WIN");
-        }, 900);
-        return;
-      }
-
-      const nextLevel = clearsFloor ? level + 1 : level;
-      const nextRoom = clearsFloor ? 1 : room + 1;
-
-      setDoorHint(
-        clearsFloor
-          ? `Kat ${nextLevel} aÃ§Ä±ldÄ±. Oda 1/3 baÅŸlÄ±yor.`
-          : `DoÄŸru kapÄ±. Oda ${nextRoom}/3 aÃ§Ä±ldÄ±.`
-      );
+      setDoorHint("Kilit çözüldü.");
+      showDoorEventOverlay("SAFE", "Kilit çözüldü.", 740);
 
       addTimeout(() => {
-        setLevel(nextLevel);
-        setRoom(nextRoom);
-        if (nextLevel >= CHECKPOINT_LEVEL) setCheckpointUnlocked(true);
         setCarryoverCurseActive(carryoverCursePending);
         setCarryoverCursePending(false);
-        prepareNextRoom(`Kat ${nextLevel} / Oda ${nextRoom}/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.`);
-      }, 850);
+        setDoorInputLocked(false);
+        setScene("DEMO_END");
+      }, 760);
       return;
     }
 
     const damage = outcome === "CURSE" ? 2 : 1;
-    if (outcome === "CURSE") setCarryoverCursePending(true);
+    if (outcome === "CURSE") {
+      setCarryoverCursePending(true);
+      showDoorEventOverlay("CURSE", "LANET", 620);
+    } else {
+      showDoorEventOverlay("MONSTER", "Bir şey kıpırdadı.", 620);
+      playStaticIfAvailable();
+    }
     const nextLives = clamp(lives - damage, 0, MAX_LIVES);
     setLives(nextLives);
 
@@ -681,8 +706,8 @@ export default function App() {
 
     setDoorHint(
       outcome === "CURSE"
-        ? "Lanet kapÄ±sÄ±. Ä°ki can kaybettin. Sonraki odada bozulma taÅŸÄ±nacak."
-        : "YanlÄ±ÅŸ kapÄ±. Bir can kaybettin."
+        ? "LANET. Iki can kaybettin. Bozulma sonraki odaya tasinacak."
+        : "Bir sey kipirdadi. Bir can kaybettin."
     );
 
     // Wrong pick always rerolls this room immediately.
@@ -690,15 +715,17 @@ export default function App() {
 
     addTimeout(() => {
       if (nextLives <= 0) {
+        setDoorEventOverlay(null);
         setScene("GAME_OVER");
         setDoorInputLocked(false);
         return;
       }
+      setCarryoverCurseActive((prev) => prev || carryoverCursePending || outcome === "CURSE");
       setSelectedDoor(null);
       setSelectedDoorOutcome(null);
       setDoorHitPulseKey(0);
       setDoorInputLocked(false);
-      setDoorHint(`Kat ${level} / Oda ${room}/3 â€” Yeniden dene.`);
+      setDoorHint(`Kat ${level} / Oda ${room}/${ROOMS_PER_FLOOR} - Yeniden dene.`);
     }, 950);
   };
 
@@ -722,7 +749,7 @@ export default function App() {
     setCarryoverCurseActive(false);
     setCarryoverCursePending(false);
     setDoorHitPulseKey(0);
-    prepareNextRoom(`Kat ${CHECKPOINT_LEVEL} / Oda 1/3 â€” DoÄŸru kapÄ±yÄ± seÃ§.`);
+    prepareNextRoom(`Kat ${CHECKPOINT_LEVEL} / Oda 1/${ROOMS_PER_FLOOR} - Dogru kapiyi sec.`);
   };
 
   const getDoorClassName = (index: number) => {
@@ -1250,6 +1277,7 @@ export default function App() {
           doorCount={DOOR_COUNT}
           doorInputLocked={doorInputLocked}
           hitPulseKey={doorHitPulseKey}
+          eventOverlay={doorEventOverlay}
           getDoorClassName={getDoorClassName}
           getDoorVisualLabel={getDoorVisualLabel}
           onDoorPick={handleDoorPick}
@@ -1258,6 +1286,8 @@ export default function App() {
           levelConfig={getLevelConfig(level)}
         />
       )}
+
+      {scene === "DEMO_END" && <DemoEndScene onBackToMenu={retryToMenu} />}
 
       {scene === "GAME_OVER" && (
         <GameOverScene
