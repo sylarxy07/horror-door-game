@@ -40,6 +40,7 @@ export default function App() {
   const [scene, setScene] = useState<Scene>("MENU");
 
   const [introStep, setIntroStep] = useState(0);
+  const [beachSceneResetKey, setBeachSceneResetKey] = useState(0);
 
   const [fadeOn, setFadeOn] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -285,6 +286,7 @@ export default function App() {
 
   const skipIntro = useCallback(() => {
     setIntroStep(introLines.length - 1);
+    setBeachSceneResetKey((prev) => prev + 1);
     setScene("BEACH");
   }, []);
 
@@ -293,6 +295,7 @@ export default function App() {
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
+    setBeachSceneResetKey((prev) => prev + 1);
     setScene("BEACH");
   }, [clearAllTimeouts]);
 
@@ -1123,7 +1126,10 @@ export default function App() {
             introLines={introLines}
             onAdvance={() => {
               if (introStep < introLines.length - 1) setIntroStep((s) => s + 1);
-              else setScene("BEACH");
+              else {
+                setBeachSceneResetKey((prev) => prev + 1);
+                setScene("BEACH");
+              }
             }}
             onSkip={skipIntro}
           />
@@ -1148,6 +1154,7 @@ export default function App() {
 
       {scene === "BEACH" && (
         <BeachScene
+          key={beachSceneResetKey}
           worldShakeClass={worldShakeClass}
           inspectedCount={inspectedCount}
           pathProgressPercent={pathProgressPercent}

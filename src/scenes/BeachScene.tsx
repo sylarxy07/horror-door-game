@@ -71,6 +71,7 @@ type BeachHotspot = {
   label: string;
   obj: string;
   pos: HotspotPosition;
+  renderSprite?: boolean;
 };
 
 type BeachSceneStep = {
@@ -93,11 +94,33 @@ type PosToast = {
 };
 
 type S1PuzzlePiece = "A" | "B" | "C" | "D" | "E";
+type B0HitboxKey = "S1_KEY" | "S1_NOTE";
+type B0HitboxRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
 
 const FADE_MS = 500;
 const FADE_HALF_MS = Math.floor(FADE_MS / 2);
 const S1_PUZZLE_PIECES: readonly S1PuzzlePiece[] = ["A", "B", "C", "D", "E"];
 const S1_PUZZLE_TARGET: readonly S1PuzzlePiece[] = ["E", "B", "C", "A", "D"];
+const B0_KEY_HIT: B0HitboxRect = { left: 78, top: 49, width: 20, height: 18 };
+const B0_NOTE_HIT: B0HitboxRect = { left: 46, top: 66, width: 20, height: 20 };
+const B0_HITBOXES: Record<B0HitboxKey, B0HitboxRect> = {
+  S1_KEY: B0_KEY_HIT,
+  S1_NOTE: B0_NOTE_HIT,
+};
+const INVENTORY_LABELS: Record<string, string> = {
+  S1_KEY: "Anahtar",
+  S1_NOTE: "Islak Not",
+  S2_BADGE: "Rozet",
+  S3_NOTE: "Not",
+  S4_WATCH: "Saat",
+  S5_PLATE: "Plaka",
+  HATCH: "Kapak",
+};
 const OBJECT_VISUAL_TUNING = {
   toneFilter: "brightness(0.9) contrast(0.95) saturate(0.8)",
   hazeBlur: "blur(0.2px)",
@@ -108,24 +131,33 @@ const OBJECT_VISUAL_TUNING = {
 
 const BEACH_STEPS: readonly BeachSceneStep[] = [
   {
-    id: "run1-s1",
+    id: "run1-b0",
     run: 1,
-    scene: "S1",
-    bg: "/assets/img/beach/beach_s1.png",
+    scene: "B0",
+    bg: "/assets/img/beach/beach_b0.png",
     hotspots: [
       {
         id: "S1_KEY",
         label: "Anahtar",
         obj: "/assets/img/beach/obj1_key.png",
         pos: { left: 83.3, top: 80.4 },
+        renderSprite: false,
       },
       {
         id: "S1_NOTE",
         label: "Not",
         obj: "/assets/img/beach/obj3_note.png",
         pos: { left: 77.3, top: 84.4 },
+        renderSprite: false,
       },
     ],
+  },
+  {
+    id: "run1-s1",
+    run: 1,
+    scene: "S1",
+    bg: "/assets/img/beach/beach_s1.png",
+    hotspots: [],
   },
   {
     id: "run1-s2",
@@ -203,6 +235,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+function isB0HitboxKey(id: string): id is B0HitboxKey {
+  return id === "S1_KEY" || id === "S1_NOTE";
+}
+
 export function BeachScene({
   worldShakeClass,
   onTouchStart,
@@ -263,14 +299,30 @@ export function BeachScene({
 
   const runLabel = hatchVisible ? "RUN2" : currentStep.run === 1 ? "RUN1" : "RUN2";
   const activeSceneId = activeStep.scene;
+  const isB0Scene = activeSceneId === "B0";
   const activeSceneHotspots = activeStep.hotspots;
   const s1NoteHotspot = activeSceneHotspots.find((hotspot) => hotspot.id === "S1_NOTE");
   const visibleHotspots = posMode
     ? activeSceneHotspots
     : activeSceneHotspots.filter((hotspot) => !collectedIds.has(hotspot.id));
+  const b0HitboxHotspots = useMemo(
+    () => (isB0Scene ? visibleHotspots.filter((hotspot) => isB0HitboxKey(hotspot.id)) : []),
+    [isB0Scene, visibleHotspots]
+  );
 
-  const s1ItemsVisibleCount = activeSceneId === "S1" ? visibleHotspots.length : 0;
+  const b0ItemsVisibleCount = activeSceneId === "B0" ? visibleHotspots.length : 0;
   const collectedCount = collectedIds.size;
+  const inventoryItems = useMemo(() => {
+    const orderedIds: string[] = [];
+    for (const step of BEACH_STEPS) {
+      for (const hotspot of step.hotspots) {
+        if (!orderedIds.includes(hotspot.id)) orderedIds.push(hotspot.id);
+      }
+    }
+    return orderedIds
+      .filter((id) => collectedIds.has(id))
+      .map((id) => INVENTORY_LABELS[id] ?? id);
+  }, [collectedIds]);
   const bgName = useMemo(() => {
     const parts = activeStep.bg.split("/");
     return parts[parts.length - 1] ?? activeStep.bg;
@@ -433,11 +485,11 @@ export function BeachScene({
 
   const advanceScene = useCallback(
     (fromIndex: number) => {
-      if (fromIndex === 2) {
+      if (fromIndex === 3) {
         setTransitionText("Run 1 tamamlandi. Run 2 basliyor...");
         runFade(
           () => {
-            setStepIndex(3);
+            setStepIndex(4);
           },
           () => {
             setTransitionText(null);
@@ -500,7 +552,7 @@ export function BeachScene({
 
       const allCollectedInScene = currentStep.hotspots.every((sceneHotspot) => nextCollected.has(sceneHotspot.id));
       if (allCollectedInScene) {
-        if (currentStep.scene === "S1" && !s1PuzzleSolved) {
+        if (currentStep.scene === "B0" && !s1PuzzleSolved) {
           openS1Puzzle();
           return;
         }
@@ -545,7 +597,7 @@ export function BeachScene({
       return;
     }
 
-    if (currentStep.scene === "S1" && !s1PuzzleSolved) {
+    if (currentStep.scene === "B0" && !s1PuzzleSolved) {
       setCollectedIds((prev) => {
         const next = new Set(prev);
         for (const hotspot of currentStep.hotspots) {
@@ -633,6 +685,18 @@ export function BeachScene({
     [openOverlay, posMode]
   );
 
+  const onB0HitboxClick = useCallback(
+    (hotspot: BeachHotspot) => {
+      if (hotspot.id === "S1_KEY") {
+        console.log("B0_KEY hit");
+      } else if (hotspot.id === "S1_NOTE") {
+        console.log("B0_NOTE hit");
+      }
+      onHotspotClick(hotspot);
+    },
+    [onHotspotClick]
+  );
+
   useEffect(() => {
     const id = window.setInterval(() => {
       setPulseTick((prev) => prev + 1);
@@ -642,6 +706,15 @@ export function BeachScene({
       window.clearInterval(id);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeSceneId !== "S1" || hatchVisible || busy || overlayOpen || s1PuzzleOpen) return;
+    if (activeSceneHotspots.length > 0) return;
+
+    runFade(() => {
+      setStepIndex(2);
+    });
+  }, [activeSceneHotspots.length, activeSceneId, busy, hatchVisible, overlayOpen, runFade, s1PuzzleOpen]);
 
   useEffect(() => {
     if (!draggingHotspotId) return;
@@ -697,10 +770,10 @@ export function BeachScene({
         overflow: "hidden",
         background: "#05070b",
       }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onTouchCancel={onTouchEnd}
+      onTouchStart={isB0Scene ? undefined : onTouchStart}
+      onTouchMove={isB0Scene ? undefined : onTouchMove}
+      onTouchEnd={isB0Scene ? undefined : onTouchEnd}
+      onTouchCancel={isB0Scene ? undefined : onTouchEnd}
       aria-label="Beach"
     >
       <img
@@ -730,12 +803,14 @@ export function BeachScene({
         {visibleHotspots.map((hotspot) => {
           const isS1Key = hotspot.id === "S1_KEY";
           const isS1Note = hotspot.id === "S1_NOTE";
-          const isS1ClusterKey = activeSceneId === "S1" && isS1Key;
-          const isS1ClusterNote = activeSceneId === "S1" && isS1Note;
+          const isS1ClusterKey = activeSceneId === "B0" && isS1Key;
+          const isS1ClusterNote = activeSceneId === "B0" && isS1Note;
+          const shouldRenderSprite = hotspot.renderSprite !== false;
+          const usesB0Hitbox = isB0Scene && isB0HitboxKey(hotspot.id);
           const hotspotPosBase = getHotspotPosition(hotspot);
           const s1NotePos = s1NoteHotspot ? getHotspotPosition(s1NoteHotspot) : null;
           const hotspotPos =
-            isS1ClusterKey && s1NotePos
+            isS1ClusterKey && s1NotePos && shouldRenderSprite
               ? {
                   left: clamp(s1NotePos.left + 1.8, 0, 100),
                   top: clamp(s1NotePos.top - 0.6, 0, 100),
@@ -755,6 +830,8 @@ export function BeachScene({
             : isS1Key
               ? `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`
               : `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`;
+
+          if (!shouldRenderSprite || usesB0Hitbox) return null;
 
           if (isS1Note) {
             const noteScale = hotspotScale * 1.08;
@@ -918,6 +995,50 @@ export function BeachScene({
         })}
       </div>
 
+      {isB0Scene && b0HitboxHotspots.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 9999,
+            pointerEvents: overlayOpen || s1PuzzleOpen || busy ? "none" : "auto",
+          }}
+        >
+          {b0HitboxHotspots.map((hotspot) => {
+            const hitbox = B0_HITBOXES[hotspot.id];
+            const showDebug = isDev;
+
+            return (
+              <button
+                key={`hitbox-${hotspot.id}`}
+                type="button"
+                onClick={() => onB0HitboxClick(hotspot)}
+                onPointerDown={(e) => onHotspotPointerDown(e, hotspot)}
+                disabled={busy}
+                aria-label={`${hotspot.label} hitbox`}
+                style={{
+                  position: "absolute",
+                  left: `${hitbox.left}%`,
+                  top: `${hitbox.top}%`,
+                  width: `${hitbox.width}%`,
+                  height: `${hitbox.height}%`,
+                  border: 0,
+                  outline: showDebug ? "2px solid red" : "none",
+                  borderRadius: 6,
+                  background: showDebug ? "rgba(255,0,0,0.08)" : "transparent",
+                  margin: 0,
+                  padding: 0,
+                  zIndex: 9999,
+                  pointerEvents: "auto",
+                  cursor: posMode ? (draggingHotspotId === hotspot.id ? "grabbing" : "grab") : "pointer",
+                  touchAction: posMode ? "none" : "manipulation",
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+
       <div
         style={{
           position: "absolute",
@@ -937,12 +1058,42 @@ export function BeachScene({
         <div>scene: {activeSceneId}</div>
         <div>collected: {collectedCount}/{allCollectibleCount}</div>
         <div>bg: {bgName}</div>
-        {isDev && (
+        {isDev && activeSceneHotspots[0] && (
           <div>
             POS={posMode ? "ON" : "OFF"} {activeSceneId} pos: {getHotspotPosition(activeSceneHotspots[0]).left.toFixed(1)},{getHotspotPosition(activeSceneHotspots[0]).top.toFixed(1)}
           </div>
         )}
-        {isDev && activeSceneId === "S1" && <div>S1 items visible: {s1ItemsVisibleCount}</div>}
+        {isDev && activeSceneId === "B0" && <div>B0 items visible: {b0ItemsVisibleCount}</div>}
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          right: 12,
+          bottom: 12,
+          zIndex: 20,
+          padding: "8px 10px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,.18)",
+          background: "rgba(5,8,12,.72)",
+          color: "#eef2fb",
+          fontSize: 12,
+          lineHeight: 1.35,
+          minWidth: 168,
+          maxWidth: 260,
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 4 }}>Envanter ({inventoryItems.length})</div>
+        {inventoryItems.length === 0 ? (
+          <div style={{ opacity: 0.72 }}>- Bos</div>
+        ) : (
+          inventoryItems.map((item) => (
+            <div key={item} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span aria-hidden style={{ width: 4, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
+              <span>- {item}</span>
+            </div>
+          ))
+        )}
       </div>
 
       {isDev && (
@@ -1272,7 +1423,11 @@ export function BeachScene({
                 }}
               >
                 <img
-                  src={overlayTarget === "hatch" ? HATCH_STEP.hotspots[0].obj : (selectedHotspot?.obj ?? activeSceneHotspots[0].obj)}
+                  src={
+                    overlayTarget === "hatch"
+                      ? HATCH_STEP.hotspots[0].obj
+                      : (selectedHotspot?.obj ?? activeSceneHotspots[0]?.obj ?? HATCH_STEP.hotspots[0].obj)
+                  }
                   alt=""
                   draggable={false}
                   style={{ width: "80%", height: "80%", objectFit: "contain" }}
