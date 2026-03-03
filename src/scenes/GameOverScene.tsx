@@ -18,14 +18,14 @@ export function GameOverScene({
       <div className="bgBasic" />
       <div className="centerCard panel">
         <h2 className="title" style={{ margin: 0 }}>
-          Deneme Sonlandı
+          {"Deneme Sonland\u0131"}
         </h2>
         <div className="sub">
-          Tamay kapı düzenini çözemedi. Sis geri çekilmiyor. Işık hâlâ çağırıyor.
+          {"Tamay kap\u0131 d\u00fczenini \u00e7\u00f6zemedi. Sis geri \u00e7ekilmiyor. I\u015f\u0131k h\u00e2l\u00e2 \u00e7a\u011f\u0131r\u0131yor."}
         </div>
         <div className="stats">
           <div className="stat">
-            <div className="k">Ulaşılan Kat</div>
+            <div className="k">{"Ula\u015f\u0131lan Kat"}</div>
             <div className="v">{level}</div>
           </div>
           <div className="stat">
@@ -40,7 +40,7 @@ export function GameOverScene({
             </button>
           )}
           <button className="btn wide" onClick={onRetryToMenu} type="button">
-            Ana Menüye Dön
+            {"Ana Men\u00fcye D\u00f6n"}
           </button>
         </div>
       </div>

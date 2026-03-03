@@ -855,7 +855,7 @@ export default function App() {
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("band")} disabled={!canSolve} type="button">
-                KaydÄ± Al
+                {"Kayd\u0131 Al"}
               </button>
             </div>
           </div>
@@ -899,7 +899,7 @@ export default function App() {
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("recorder")} disabled={!canSolve} type="button">
-                KaydÄ± Al
+                {"Kayd\u0131 Al"}
               </button>
             </div>
           </div>
@@ -927,7 +927,7 @@ export default function App() {
             <div className="grid2">
               {[1, 2, 3, 4].map((n) => (
                 <button className="btn" key={n} type="button" onClick={() => push(n)} disabled={canSolveNote}>
-                  ParÃ§a {n}
+                  {"Par\u00e7a"} {n}
                 </button>
               ))}
             </div>
@@ -941,13 +941,13 @@ export default function App() {
                   setPuzzleFeedback("");
                 }}
               >
-                SÄ±fÄ±rla
+                {"S\u0131f\u0131rla"}
               </button>
               <button className="btn" onClick={closeClueModal} type="button">
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("note")} disabled={!canSolveNote} type="button">
-                KaydÄ± Al
+                {"Kayd\u0131 Al"}
               </button>
             </div>
           </div>
@@ -978,7 +978,7 @@ export default function App() {
                 ))}
             </div>
             <div className="grid3">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "âŒ«"].map((k) => (
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "\u232b"].map((k) => (
                 <button
                   className="btn"
                   key={String(k)}
@@ -989,7 +989,7 @@ export default function App() {
                       setPuzzleFeedback("");
                       return;
                     }
-                    if (k === "âŒ«") {
+                    if (k === "\u232b") {
                       backspace();
                       return;
                     }
@@ -1012,7 +1012,7 @@ export default function App() {
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("phone")} disabled={!canSolve} type="button">
-                KaydÄ± Al
+                {"Kayd\u0131 Al"}
               </button>
             </div>
           </div>
@@ -1046,7 +1046,7 @@ export default function App() {
                   type="button"
                   onClick={() => setPuzzles((p) => ({ ...p, tagUv: !p.tagUv }))}
                 >
-                  UV {puzzles.tagUv ? "AÃ§Ä±k" : "KapalÄ±"}
+                  UV {puzzles.tagUv ? "A\u00e7\u0131k" : "Kapal\u0131"}
                 </button>
               </div>
             </div>
@@ -1058,7 +1058,7 @@ export default function App() {
                 Geri
               </button>
               <button className="btn danger" onClick={() => markClueSolved("tag")} disabled={!canSolve} type="button">
-                KaydÄ± Al
+                {"Kayd\u0131 Al"}
               </button>
             </div>
           </div>
@@ -1174,7 +1174,7 @@ export default function App() {
               touchAction: "manipulation",
             }}
           >
-            Ä°ntroyu GeÃ§
+            {"\u0130ntroyu Ge\u00E7"}
           </button>
         </>
       )}
@@ -1310,7 +1310,7 @@ export default function App() {
       )}
 
       {beachPuzzleOpen && (
-        <PuzzleModal clueLabel="Sahil Åifre Paneli" puzzleFeedback={beachPuzzleFeedback} onClose={closeBeachPuzzle}>
+        <PuzzleModal clueLabel={"Sahil \u015eifre Paneli"} puzzleFeedback={beachPuzzleFeedback} onClose={closeBeachPuzzle}>
           {renderBeachPuzzleContent()}
         </PuzzleModal>
       )}
@@ -1344,10 +1344,10 @@ export default function App() {
             </button>
           )}
           <button className="btn ghost" type="button" onClick={jumpToTunnel}>
-            TÃ¼nele Atla
+            {"T\u00FCnele Atla"}
           </button>
           <button className="btn ghost" type="button" onClick={jumpToDoorGame}>
-            KapÄ±lara Atla
+            {"Kap\u0131lara Atla"}
           </button>
         </div>
       )}

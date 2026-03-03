@@ -94,7 +94,6 @@ type PosToast = {
 };
 
 type S1PuzzlePiece = "A" | "B" | "C" | "D" | "E";
-type B0HitboxKey = "S1_KEY" | "S1_NOTE";
 type B0HitboxRect = {
   left: number;
   top: number;
@@ -106,21 +105,7 @@ const FADE_MS = 500;
 const FADE_HALF_MS = Math.floor(FADE_MS / 2);
 const S1_PUZZLE_PIECES: readonly S1PuzzlePiece[] = ["A", "B", "C", "D", "E"];
 const S1_PUZZLE_TARGET: readonly S1PuzzlePiece[] = ["E", "B", "C", "A", "D"];
-const B0_KEY_HIT: B0HitboxRect = { left: 78, top: 49, width: 20, height: 18 };
 const B0_NOTE_HIT: B0HitboxRect = { left: 46, top: 66, width: 20, height: 20 };
-const B0_HITBOXES: Record<B0HitboxKey, B0HitboxRect> = {
-  S1_KEY: B0_KEY_HIT,
-  S1_NOTE: B0_NOTE_HIT,
-};
-const INVENTORY_LABELS: Record<string, string> = {
-  S1_KEY: "Anahtar",
-  S1_NOTE: "Islak Not",
-  S2_BADGE: "Rozet",
-  S3_NOTE: "Not",
-  S4_WATCH: "Saat",
-  S5_PLATE: "Plaka",
-  HATCH: "Kapak",
-};
 const OBJECT_VISUAL_TUNING = {
   toneFilter: "brightness(0.9) contrast(0.95) saturate(0.8)",
   hazeBlur: "blur(0.2px)",
@@ -141,7 +126,7 @@ const BEACH_STEPS: readonly BeachSceneStep[] = [
         label: "Anahtar",
         obj: "/assets/img/beach/obj1_key.png",
         pos: { left: 83.3, top: 80.4 },
-        renderSprite: false,
+        renderSprite: true,
       },
       {
         id: "S1_NOTE",
@@ -227,16 +212,13 @@ const HATCH_STEP = {
       label: "Hatch",
       obj: "/assets/img/beach/obj_hatch.png",
       pos: { left: 55, top: 83.6 },
+      renderSprite: true,
     },
   ],
 } as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-function isB0HitboxKey(id: string): id is B0HitboxKey {
-  return id === "S1_KEY" || id === "S1_NOTE";
 }
 
 export function BeachScene({
@@ -264,9 +246,10 @@ export function BeachScene({
   const [s1PuzzleStatus, setS1PuzzleStatus] = useState<string | null>(null);
   const [s1PuzzleSlots, setS1PuzzleSlots] = useState<Array<S1PuzzlePiece | null>>([null, null, null, null, null]);
   const [s1SelectedPiece, setS1SelectedPiece] = useState<S1PuzzlePiece | null>(null);
+  const [s1PulseSlotIndex, setS1PulseSlotIndex] = useState<number | null>(null);
+  const [s1PuzzleShakeOn, setS1PuzzleShakeOn] = useState(false);
 
   const [posMode, setPosMode] = useState(false);
-  const [showHitboxDebug, setShowHitboxDebug] = useState(false);
   const [draggingHotspotId, setDraggingHotspotId] = useState<string | null>(null);
   const [devHotspotPositions, setDevHotspotPositions] = useState<Record<string, HotspotPosition>>({});
   const [posToast, setPosToast] = useState<PosToast | null>(null);
@@ -306,24 +289,13 @@ export function BeachScene({
   const visibleHotspots = posMode
     ? activeSceneHotspots
     : activeSceneHotspots.filter((hotspot) => !collectedIds.has(hotspot.id));
-  const b0HitboxHotspots = useMemo(
-    () => (isB0Scene ? visibleHotspots.filter((hotspot) => isB0HitboxKey(hotspot.id)) : []),
+  const b0NoteHotspot = useMemo(
+    () => (isB0Scene ? visibleHotspots.find((hotspot) => hotspot.id === "S1_NOTE") ?? null : null),
     [isB0Scene, visibleHotspots]
   );
 
   const b0ItemsVisibleCount = activeSceneId === "B0" ? visibleHotspots.length : 0;
   const collectedCount = collectedIds.size;
-  const inventoryItems = useMemo(() => {
-    const orderedIds: string[] = [];
-    for (const step of BEACH_STEPS) {
-      for (const hotspot of step.hotspots) {
-        if (!orderedIds.includes(hotspot.id)) orderedIds.push(hotspot.id);
-      }
-    }
-    return orderedIds
-      .filter((id) => collectedIds.has(id))
-      .map((id) => INVENTORY_LABELS[id] ?? id);
-  }, [collectedIds]);
   const bgName = useMemo(() => {
     const parts = activeStep.bg.split("/");
     return parts[parts.length - 1] ?? activeStep.bg;
@@ -398,6 +370,8 @@ export function BeachScene({
     setS1PuzzleStatus(null);
     setS1PuzzleSlots([null, null, null, null, null]);
     setS1SelectedPiece(null);
+    setS1PulseSlotIndex(null);
+    setS1PuzzleShakeOn(false);
   }, []);
 
   const onS1PieceSelect = useCallback(
@@ -476,6 +450,10 @@ export function BeachScene({
       setS1PuzzleStatus(null);
       setS1PuzzleSlots(nextSlots);
       setS1SelectedPiece(replacedPiece ?? null);
+      setS1PulseSlotIndex(index);
+      schedule(() => {
+        setS1PulseSlotIndex((current) => (current === index ? null : current));
+      }, 180);
 
       const allFilled = nextSlots.every((slotPiece): slotPiece is S1PuzzlePiece => slotPiece !== null);
       if (!allFilled) return;
@@ -485,9 +463,13 @@ export function BeachScene({
         completeS1Puzzle();
       } else {
         setS1PuzzleStatus("Dizilim kilide uymadı. Parçaları yeniden yerleştir.");
+        setS1PuzzleShakeOn(true);
+        schedule(() => {
+          setS1PuzzleShakeOn(false);
+        }, 260);
       }
     },
-    [completeS1Puzzle, s1PuzzleAdvancing, s1PuzzleSlots, s1SelectedPiece]
+    [completeS1Puzzle, s1PuzzleAdvancing, s1PuzzleSlots, s1SelectedPiece, schedule]
   );
 
   const advanceScene = useCallback(
@@ -692,18 +674,6 @@ export function BeachScene({
     [openOverlay, posMode]
   );
 
-  const onB0HitboxClick = useCallback(
-    (hotspot: BeachHotspot) => {
-      if (hotspot.id === "S1_KEY") {
-        console.log("B0_KEY hit");
-      } else if (hotspot.id === "S1_NOTE") {
-        console.log("B0_NOTE hit");
-      }
-      onHotspotClick(hotspot);
-    },
-    [onHotspotClick]
-  );
-
   useEffect(() => {
     const id = window.setInterval(() => {
       setPulseTick((prev) => prev + 1);
@@ -770,12 +740,15 @@ export function BeachScene({
 
   return (
     <div
-      className={worldShakeClass}
+      className={`beachSceneRoot ${worldShakeClass}`}
       style={{
         position: "fixed",
         inset: 0,
         overflow: "hidden",
         background: "#05070b",
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
+        WebkitFontSmoothing: "antialiased",
+        textRendering: "optimizeLegibility",
       }}
       onTouchStart={isB0Scene ? undefined : onTouchStart}
       onTouchMove={isB0Scene ? undefined : onTouchMove}
@@ -783,20 +756,60 @@ export function BeachScene({
       onTouchCancel={isB0Scene ? undefined : onTouchEnd}
       aria-label="Beach"
     >
-      <img
-        src={activeStep.bg}
-        alt=""
-        draggable={false}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          userSelect: "none",
-          pointerEvents: "none",
-        }}
-      />
+      {isB0Scene ? (
+        <>
+          <img
+            src={activeStep.bg}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center",
+              userSelect: "none",
+              pointerEvents: "none",
+              filter: "blur(12px)",
+              opacity: 0.6,
+              transform: "scale(1.06)",
+              transformOrigin: "center",
+            }}
+          />
+          <img
+            src={activeStep.bg}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              objectPosition: "center",
+              userSelect: "none",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      ) : (
+        <img
+          src={activeStep.bg}
+          alt=""
+          draggable={false}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            userSelect: "none",
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
       <div
         aria-hidden
@@ -813,7 +826,6 @@ export function BeachScene({
           const isS1ClusterKey = activeSceneId === "B0" && isS1Key;
           const isS1ClusterNote = activeSceneId === "B0" && isS1Note;
           const shouldRenderSprite = hotspot.renderSprite !== false;
-          const usesB0Hitbox = isB0Scene && isB0HitboxKey(hotspot.id);
           const hotspotPosBase = getHotspotPosition(hotspot);
           const s1NotePos = s1NoteHotspot ? getHotspotPosition(s1NoteHotspot) : null;
           const hotspotPos =
@@ -838,7 +850,7 @@ export function BeachScene({
               ? `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`
               : `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`;
 
-          if (!shouldRenderSprite || usesB0Hitbox) return null;
+          if (!shouldRenderSprite) return null;
 
           if (isS1Note) {
             const noteScale = hotspotScale * 1.08;
@@ -846,6 +858,7 @@ export function BeachScene({
               <button
                 key={hotspot.id}
                 type="button"
+                className="beachHotspotButton"
                 onClick={() => onHotspotClick(hotspot)}
                 onPointerDown={(e) => onHotspotPointerDown(e, hotspot)}
                 disabled={busy}
@@ -866,7 +879,7 @@ export function BeachScene({
                   margin: 0,
                   boxShadow: "none",
                   outline: "none",
-                  cursor: posMode ? (draggingHotspotId === hotspot.id ? "grabbing" : "grab") : "pointer",
+                  cursor: "default",
                   pointerEvents: "auto",
                   touchAction: posMode ? "none" : "manipulation",
                 }}
@@ -898,6 +911,7 @@ export function BeachScene({
             <button
               key={hotspot.id}
               type="button"
+              className="beachHotspotButton"
               onClick={() => onHotspotClick(hotspot)}
               onPointerDown={(e) => onHotspotPointerDown(e, hotspot)}
               disabled={busy}
@@ -917,7 +931,7 @@ export function BeachScene({
                 background: "transparent",
                 padding: 0,
                 margin: 0,
-                cursor: posMode ? (draggingHotspotId === hotspot.id ? "grabbing" : "grab") : "pointer",
+                cursor: "default",
                 pointerEvents: "auto",
                 touchAction: posMode ? "none" : "manipulation",
                 outline: isS1Key ? "none" : undefined,
@@ -1002,109 +1016,68 @@ export function BeachScene({
         })}
       </div>
 
-      {isB0Scene && b0HitboxHotspots.length > 0 && (
-        <div
+      {isB0Scene && b0NoteHotspot && (
+        <button
+          type="button"
+          className="beachHitboxButton"
+          onClick={() => onHotspotClick(b0NoteHotspot)}
+          onPointerDown={(e) => onHotspotPointerDown(e, b0NoteHotspot)}
+          disabled={busy}
+          aria-label={`${b0NoteHotspot.label} hitbox`}
           style={{
             position: "absolute",
-            inset: 0,
-            zIndex: 9999,
+            left: `${B0_NOTE_HIT.left}%`,
+            top: `${B0_NOTE_HIT.top}%`,
+            width: `${B0_NOTE_HIT.width}%`,
+            height: `${B0_NOTE_HIT.height}%`,
+            border: 0,
+            outline: "none",
+            borderRadius: 6,
+            background: "transparent",
+            margin: 0,
+            padding: 0,
+            zIndex: 12,
             pointerEvents: overlayOpen || s1PuzzleOpen || busy ? "none" : "auto",
+            cursor: "default",
+            touchAction: posMode ? "none" : "manipulation",
+          }}
+        />
+      )}
+
+      {isDev && (
+        <div
+          className="beachDebugHud"
+          style={{
+            position: "absolute",
+            left: 12,
+            bottom: 12,
+            zIndex: 20,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,.18)",
+            background: "rgba(5,8,12,.72)",
+            color: "#eef2fb",
+            fontSize: 12,
+            lineHeight: 1.4,
           }}
         >
-          {b0HitboxHotspots.map((hotspot) => {
-            const hitbox = B0_HITBOXES[hotspot.id];
-            const showDebug = isDev && showHitboxDebug;
-
-            return (
-              <button
-                key={`hitbox-${hotspot.id}`}
-                type="button"
-                onClick={() => onB0HitboxClick(hotspot)}
-                onPointerDown={(e) => onHotspotPointerDown(e, hotspot)}
-                disabled={busy}
-                aria-label={`${hotspot.label} hitbox`}
-                style={{
-                  position: "absolute",
-                  left: `${hitbox.left}%`,
-                  top: `${hitbox.top}%`,
-                  width: `${hitbox.width}%`,
-                  height: `${hitbox.height}%`,
-                  border: 0,
-                  outline: showDebug ? "2px solid red" : "none",
-                  borderRadius: 6,
-                  background: showDebug ? "rgba(255,0,0,0.08)" : "transparent",
-                  margin: 0,
-                  padding: 0,
-                  zIndex: 9999,
-                  pointerEvents: "auto",
-                  cursor: posMode ? (draggingHotspotId === hotspot.id ? "grabbing" : "grab") : "pointer",
-                  touchAction: posMode ? "none" : "manipulation",
-                }}
-              />
-            );
-          })}
+          <div>run: {runLabel}</div>
+          <div>scene: {activeSceneId}</div>
+          <div>collected: {collectedCount}/{allCollectibleCount}</div>
+          <div>bg: {bgName}</div>
+          {activeSceneHotspots[0] && (
+            <div>
+              POS={posMode ? "ON" : "OFF"} {activeSceneId} pos: {getHotspotPosition(activeSceneHotspots[0]).left.toFixed(1)},
+              {getHotspotPosition(activeSceneHotspots[0]).top.toFixed(1)}
+            </div>
+          )}
+          {activeSceneId === "B0" && <div>B0 items visible: {b0ItemsVisibleCount}</div>}
         </div>
       )}
 
-      <div
-        style={{
-          position: "absolute",
-          left: 12,
-          bottom: 12,
-          zIndex: 20,
-          padding: "8px 10px",
-          borderRadius: 10,
-          border: "1px solid rgba(255,255,255,.18)",
-          background: "rgba(5,8,12,.72)",
-          color: "#eef2fb",
-          fontSize: 12,
-          lineHeight: 1.4,
-        }}
-      >
-        <div>run: {runLabel}</div>
-        <div>scene: {activeSceneId}</div>
-        <div>collected: {collectedCount}/{allCollectibleCount}</div>
-        <div>bg: {bgName}</div>
-        {isDev && activeSceneHotspots[0] && (
-          <div>
-            POS={posMode ? "ON" : "OFF"} {activeSceneId} pos: {getHotspotPosition(activeSceneHotspots[0]).left.toFixed(1)},{getHotspotPosition(activeSceneHotspots[0]).top.toFixed(1)}
-          </div>
-        )}
-        {isDev && activeSceneId === "B0" && <div>B0 items visible: {b0ItemsVisibleCount}</div>}
-      </div>
-
-      <div
-        style={{
-          position: "absolute",
-          right: 12,
-          bottom: 12,
-          zIndex: 20,
-          padding: "8px 10px",
-          borderRadius: 10,
-          border: "1px solid rgba(255,255,255,.18)",
-          background: "rgba(5,8,12,.72)",
-          color: "#eef2fb",
-          fontSize: 12,
-          lineHeight: 1.35,
-          minWidth: 168,
-          maxWidth: 260,
-        }}
-      >
-        <div style={{ fontWeight: 800, marginBottom: 4 }}>Envanter ({inventoryItems.length})</div>
-        {inventoryItems.length === 0 ? (
-          <div style={{ opacity: 0.72 }}>- Bos</div>
-        ) : (
-          inventoryItems.map((item) => (
-            <div key={item} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span aria-hidden style={{ width: 4, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
-              <span>- {item}</span>
-            </div>
-          ))
-        )}
-      </div>
-
       {isDev && (
         <button
+          className="beachPosBadge"
           type="button"
           onClick={() => setPosMode((prev) => !prev)}
           style={{
@@ -1132,6 +1105,7 @@ export function BeachScene({
 
       {isDev && (
         <div
+          className="beachDevPanel"
           style={{
             position: "absolute",
             top: 12,
@@ -1166,25 +1140,6 @@ export function BeachScene({
             }}
           >
             NEXT
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowHitboxDebug((prev) => !prev)}
-            style={{
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,.26)",
-              background: showHitboxDebug ? "rgba(190,52,52,.28)" : "rgba(6,10,16,.92)",
-              color: "#eef2fb",
-              fontSize: 12,
-              fontWeight: 700,
-              padding: "8px 10px",
-              minHeight: 34,
-              width: "100%",
-              cursor: "pointer",
-              touchAction: "manipulation",
-            }}
-          >
-            HITBOX: {showHitboxDebug ? "ON" : "OFF"}
           </button>
         </div>
       )}
@@ -1256,6 +1211,7 @@ export function BeachScene({
 
       {s1PuzzleOpen && (
         <div
+          className="s1PuzzleOverlay"
           style={{
             position: "absolute",
             inset: 0,
@@ -1270,6 +1226,7 @@ export function BeachScene({
             role="dialog"
             aria-modal="true"
             aria-label="Anahtar Halkası"
+            className={`s1PuzzlePanel ${s1PuzzleShakeOn ? "s1PuzzlePanel--shake" : ""}`}
             style={{
               width: "min(94vw, 640px)",
               borderRadius: 16,
@@ -1281,12 +1238,15 @@ export function BeachScene({
               gap: 12,
             }}
           >
-            <div style={{ color: "#eef2fb", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>Anahtar Halkası</div>
-            <div style={{ color: "#d7e0f5", fontSize: 13, lineHeight: 1.35 }}>
+            <div className="s1PuzzleTitle" style={{ color: "#eef2fb", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>
+              ANAHTAR HALKASI
+            </div>
+            <div className="s1PuzzleSubtitle" style={{ color: "#d7e0f5", fontSize: 13, lineHeight: 1.35 }}>
               Parçayı seç, sonra boş bir yuvaya dokun.
             </div>
 
             <div
+              className="s1PuzzleSlots"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
@@ -1299,6 +1259,9 @@ export function BeachScene({
                   type="button"
                   onClick={() => onS1SlotClick(slotIndex)}
                   disabled={s1PuzzleAdvancing}
+                  className={`s1PuzzleSlot ${slotPiece ? "s1PuzzleSlot--filled" : ""} ${
+                    s1PulseSlotIndex === slotIndex ? "s1PuzzleSlot--pulse" : ""
+                  }`}
                   style={{
                     minHeight: 58,
                     borderRadius: 12,
@@ -1316,8 +1279,11 @@ export function BeachScene({
               ))}
             </div>
 
-            <div style={{ color: "#d7e0f5", fontSize: 12, letterSpacing: ".04em", opacity: 0.88 }}>PARÇALAR</div>
+            <div className="s1PuzzleLabel" style={{ color: "#d7e0f5", fontSize: 12, letterSpacing: ".04em", opacity: 0.88 }}>
+              PARÇALAR
+            </div>
             <div
+              className="s1PuzzlePieces"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
@@ -1333,6 +1299,9 @@ export function BeachScene({
                     type="button"
                     onClick={() => onS1PieceSelect(piece)}
                     disabled={s1PuzzleAdvancing}
+                    className={`s1PuzzlePiece ${isSelected ? "s1PuzzlePiece--selected" : ""} ${
+                      isPlaced ? "s1PuzzlePiece--placed" : ""
+                    }`}
                     style={{
                       minHeight: 56,
                       borderRadius: 12,
@@ -1356,8 +1325,10 @@ export function BeachScene({
               })}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div style={{ color: "#eef2fb", fontSize: 13 }}>Seçili parça: {s1SelectedPiece ?? "Yok"}</div>
+            <div className="s1PuzzleFooter" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div className="s1PuzzleSelected" style={{ color: "#eef2fb", fontSize: 13 }}>
+                Seçili parça: {s1SelectedPiece ?? "Yok"}
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -1365,8 +1336,11 @@ export function BeachScene({
                   setS1PuzzleStatus(null);
                   setS1SelectedPiece(null);
                   setS1PuzzleSlots([null, null, null, null, null]);
+                  setS1PulseSlotIndex(null);
+                  setS1PuzzleShakeOn(false);
                 }}
                 disabled={s1PuzzleAdvancing}
+                className="s1PuzzleResetBtn"
                 style={{
                   minHeight: 40,
                   borderRadius: 10,
@@ -1386,6 +1360,7 @@ export function BeachScene({
 
             {s1PuzzleStatus && (
               <div
+                className={`s1PuzzleStatus ${s1PuzzleStatus === "Anahtar kilidi hatırladı." ? "s1PuzzleStatus--ok" : ""}`}
                 style={{
                   borderRadius: 10,
                   border: "1px solid rgba(255,255,255,.18)",

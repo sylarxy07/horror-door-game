@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type IntroSceneProps = {
   worldShakeClass: string;
@@ -12,13 +12,18 @@ const introSlideImageCandidates = [
   ["/images/scenes/prologue_s1_home_code.png", "/image/scence/prologue_s1_home_code.png"],
   ["/images/scenes/prologue_s2_screen_glitch.png", "/image/scence/prologue_s2_screen_glitch.png"],
   ["/images/scenes/prologue_s3_redeyes.png", "/image/scence/prologue_s3_redeyes.png"],
-  ["/images/scenes/prologue_s4_island_wakeup_path.png", "/image/scence/prologue_s4_island_wakeup_path.png"],
 ];
+const introInterludeText =
+  "Ekrandaki deh\u015fet verici g\u00f6zlerin etkisiyle bay\u0131lan Tamay,\n" +
+  "\u0131ss\u0131z bir kumsalda uyan\u0131r.\n\n" +
+  "Kendine geldikten sonra i\u00e7ini tuhaf ama tan\u0131d\u0131k bir his kaplar ve der ki:\n\n" +
+  "\u2018Buraya nas\u0131l geldim?\nNeresi buras\u0131?\n\u0130lk kez mi geliyorum\u2026 yoksa tekrar m\u0131?\u2019";
 const introBaseStepMs = 1700;
 const introCharMs = 48;
 const introMinStepMs = 5400;
 const introMaxStepMs = 9800;
-const introFinalHoldMs = 820;
+const introInterludeFadeMs = 400;
+const introInterludeReadMs = 7000;
 const introMusicPeakGain = 0.022;
 const introMusicFadeInSec = 2.2;
 const introMusicFadeOutSec = 0.85;
@@ -43,6 +48,8 @@ export function IntroScene(props: IntroSceneProps) {
   const [cmdLines, setCmdLines] = useState<string[] | null>(null);
   const [imageCandidateByStep, setImageCandidateByStep] = useState<Record<number, number>>({});
   const [isOutroFading, setIsOutroFading] = useState(false);
+  const [isInterludeActive, setIsInterludeActive] = useState(false);
+  const [isInterludeTextVisible, setIsInterludeTextVisible] = useState(false);
   // Single-layer scene: only one image is ever in the DOM.
   // Bridge phase drives a black overlay for scene-to-scene transitions.
   const [displayedSrc, setDisplayedSrc] = useState<string | null>(null);
@@ -56,12 +63,21 @@ export function IntroScene(props: IntroSceneProps) {
   const [subtitlePhase, setSubtitlePhase] = useState<"in" | "steady" | "out">("in");
   const ambienceRef = useRef<IntroAmbienceHandle | null>(null);
   const didMusicFadeOutRef = useRef(false);
+  const advancedStepRef = useRef<number | null>(null);
+  const interludeStartedStepRef = useRef<number | null>(null);
   const subtitleTimersRef = useRef<number[]>([]);
   const subtitleCurrentRef = useRef("");
+  const subtitleKeyRef = useRef<string | null>(null);
+  const interludeTimersRef = useRef<number[]>([]);
 
   const clearSubtitleTimers = useCallback(() => {
     subtitleTimersRef.current.forEach((id) => window.clearTimeout(id));
     subtitleTimersRef.current = [];
+  }, []);
+
+  const clearInterludeTimers = useCallback(() => {
+    interludeTimersRef.current.forEach((id) => window.clearTimeout(id));
+    interludeTimersRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -106,7 +122,7 @@ export function IntroScene(props: IntroSceneProps) {
     if (displayedSrc === activeImageSrc) return;
 
     if (!displayedSrc) {
-      // First image — show immediately, no bridge needed.
+      // First image â€” show immediately, no bridge needed.
       setDisplayedSrc(activeImageSrc);
       setSceneToken((t) => t + 1);
       return;
@@ -120,7 +136,7 @@ export function IntroScene(props: IntroSceneProps) {
   const handleBridgeTransitionEnd = useCallback(() => {
     setBridgePhase((phase) => {
       if (phase === "darkening") {
-        // Peak reached — swap image and reveal immediately (no hold).
+        // Peak reached â€” swap image and reveal immediately (no hold).
         const next = pendingSrcRef.current;
         if (next) {
           setDisplayedSrc(next);
@@ -139,10 +155,19 @@ export function IntroScene(props: IntroSceneProps) {
   useEffect(() => {
     const nextText = (resolvedLines[step] ?? "").trim();
     const currentText = subtitleCurrentRef.current;
+    const subtitleKey = `${step}:${nextText}`;
 
     clearSubtitleTimers();
 
     if (!currentText) {
+      if (subtitleKeyRef.current === subtitleKey) {
+        setSubtitlePhase("steady");
+        return () => {
+          clearSubtitleTimers();
+        };
+      }
+
+      subtitleKeyRef.current = subtitleKey;
       subtitleCurrentRef.current = nextText;
       setSubtitleVisual((prev) => ({ ...prev, current: nextText, token: prev.token + 1 }));
       setSubtitlePhase("in");
@@ -154,6 +179,7 @@ export function IntroScene(props: IntroSceneProps) {
     }
 
     if (nextText === currentText) {
+      subtitleKeyRef.current = subtitleKey;
       setSubtitlePhase("steady");
       return () => {
         clearSubtitleTimers();
@@ -162,6 +188,12 @@ export function IntroScene(props: IntroSceneProps) {
 
     setSubtitlePhase("out");
     const swapId = window.setTimeout(() => {
+      if (subtitleKeyRef.current === subtitleKey) {
+        setSubtitlePhase("steady");
+        return;
+      }
+
+      subtitleKeyRef.current = subtitleKey;
       subtitleCurrentRef.current = nextText;
       setSubtitleVisual((prev) => ({ ...prev, current: nextText, token: prev.token + 1 }));
       setSubtitlePhase("in");
@@ -180,6 +212,12 @@ export function IntroScene(props: IntroSceneProps) {
       clearSubtitleTimers();
     };
   }, [clearSubtitleTimers]);
+
+  useEffect(() => {
+    return () => {
+      clearInterludeTimers();
+    };
+  }, [clearInterludeTimers]);
 
   useEffect(() => {
     const AudioCtxCtor =
@@ -275,26 +313,53 @@ export function IntroScene(props: IntroSceneProps) {
   }, []);
 
   useEffect(() => {
-    if (!isLastStep) setIsOutroFading(false);
-    let outroTimerId: number | null = null;
+    if (!isLastStep) {
+      setIsOutroFading(false);
+      setIsInterludeActive(false);
+      setIsInterludeTextVisible(false);
+      interludeStartedStepRef.current = null;
+      clearInterludeTimers();
+    }
+
     const durationMs = stepDurationMs;
+
+    const advanceOnceForStep = () => {
+      if (advancedStepRef.current === step) return false;
+      advancedStepRef.current = step;
+      return true;
+    };
+
     const timerId = window.setTimeout(() => {
       if (!isLastStep) {
+        if (!advanceOnceForStep()) return;
         onAdvance();
         return;
       }
 
+      if (interludeStartedStepRef.current === step) return;
+      interludeStartedStepRef.current = step;
+
+      clearInterludeTimers();
       setIsOutroFading(true);
-      outroTimerId = window.setTimeout(() => {
+      setIsInterludeActive(true);
+      setIsInterludeTextVisible(false);
+
+      const fadeId = window.setTimeout(() => {
+        setIsInterludeTextVisible(true);
+      }, introInterludeFadeMs);
+      interludeTimersRef.current.push(fadeId);
+      const exitDelay = introInterludeFadeMs + introInterludeReadMs;
+      const exitId = window.setTimeout(() => {
+        if (!advanceOnceForStep()) return;
         onAdvance();
-      }, introFinalHoldMs);
+      }, exitDelay);
+      interludeTimersRef.current.push(exitId);
     }, durationMs);
 
     return () => {
       window.clearTimeout(timerId);
-      if (outroTimerId !== null) window.clearTimeout(outroTimerId);
     };
-  }, [step, isLastStep, onAdvance, stepDurationMs]);
+  }, [clearInterludeTimers, isLastStep, onAdvance, step, stepDurationMs]);
 
   useEffect(() => {
     if (!isOutroFading || didMusicFadeOutRef.current) return;
@@ -319,7 +384,7 @@ export function IntroScene(props: IntroSceneProps) {
                 key={`intro-scene-${sceneToken}`}
                 className="introSceneImage introSceneImageCurrent"
                 src={displayedSrc}
-                alt={`Giris sahnesi ${step + 1}`}
+                alt={`GiriÅŸ sahnesi ${step + 1}`}
                 loading="eager"
                 onError={() => {
                   setImageCandidateByStep((prev) => {
@@ -345,21 +410,53 @@ export function IntroScene(props: IntroSceneProps) {
             <span className="introEye introEyeRight" />
           </div>
 
-          <div className="introSubtitleArea" aria-live="polite">
-            <p
-              key={`intro-line-${subtitleVisual.token}-${step}`}
-              className={`introSubtitleText ${
-                subtitlePhase === "out" ? "introSubtitleTextOut" : subtitlePhase === "in" ? "introSubtitleTextIn" : ""
-              }`}
-            >
-              {subtitleVisual.current}
-            </p>
-            {isLastStep && <span className="introSubtitleEnd" aria-hidden="true">...</span>}
-          </div>
+          {!isInterludeActive && (
+            <div className="introSubtitleArea" aria-live="polite">
+              <p
+                key={`intro-line-${subtitleVisual.token}-${step}`}
+                className={`introSubtitleText ${
+                  subtitlePhase === "out" ? "introSubtitleTextOut" : subtitlePhase === "in" ? "introSubtitleTextIn" : ""
+                }`}
+              >
+                {subtitleVisual.current}
+              </p>
+            </div>
+          )}
 
-          <div className={`introOutroFade ${isOutroFading ? "on" : ""}`} />
+          {isInterludeActive && (
+            <div className="introInterlude" aria-live="polite">
+              <p
+                style={{
+                  margin: 0,
+                  color: "rgba(245,247,252,.96)",
+                  opacity: isInterludeTextVisible ? 1 : 0,
+                  transform: `translateY(${isInterludeTextVisible ? 0 : 4}px)`,
+                  transition: "opacity 220ms ease, transform 220ms ease",
+                  fontSize: "clamp(16px, 3.6vw, 27px)",
+                  fontWeight: 600,
+                  lineHeight: 1.45,
+                  letterSpacing: "normal",
+                  whiteSpace: "pre-line",
+                  textAlign: "center",
+                  textShadow: "0 10px 26px rgba(0,0,0,.66)",
+                  maxWidth: "min(940px, 92vw)",
+                }}
+              >
+                {introInterludeText}
+              </p>
+            </div>
+          )}
+
+          <div
+            className={`introOutroFade ${isOutroFading ? "on" : ""}`}
+            style={{ transition: `opacity ${introInterludeFadeMs}ms ease-in-out` }}
+          />
         </div>
       </main>
     </div>
   );
 }
+
+
+
+

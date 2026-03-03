@@ -815,7 +815,6 @@ export function BeachWorld({ onBack, onEnterTunnel, devToolsEnabled = false, onS
         <div className="beachWorldStats">
           <div className="stat">Ä°lerleme: %{progressPercent.toFixed(1)}</div>
           <div className="stat">Kalan: {Math.round(distanceRemaining)}m</div>
-          <div className="stat">Envanter: {inventory.length}/5</div>
           <div className={`stat ${progressReady ? "good" : ""}`}>
             L{loreCount}/3 â€¢ Ä°{hintCount}/2
           </div>
@@ -997,24 +996,6 @@ export function BeachWorld({ onBack, onEnterTunnel, devToolsEnabled = false, onS
           <span className="interactButtonText">Ä°NCELE</span>
         </button>
       </div>
-      
-      {/* Inventory Panel */}
-      {inventory.length > 0 && (
-        <div className="inventoryPanel">
-          <h3>Envanter</h3>
-          <div className="inventoryGrid">
-            {inventory.map((item) => (
-              <div key={item.id} className={`inventoryItem ${item.type === "hint" ? "hint" : "lore"}`}>
-                <span className="inventoryIcon">{item.icon}</span>
-                <span className="inventoryLabel">{item.label}</span>
-              </div>
-            ))}
-            {Array.from({ length: 5 - inventory.length }).map((_, i) => (
-              <div key={`empty-${i}`} className="inventoryItem empty" />
-            ))}
-          </div>
-        </div>
-      )}
       
       {/* Object Modal */}
       {showModal && selectedObject && (

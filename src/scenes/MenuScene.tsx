@@ -53,16 +53,14 @@ export function MenuScene({ onStart }: MenuSceneProps) {
       {/* Noise overlay */}
       <div className="menuNoise" />
 
-      {/* Gradient overlay — üst ve alt içerik alanlarını okunaklı kılar */}
+      {/* Gradient overlay: ust ve alt icerik alanlarini okunakli kilar */}
       <div className="menuMobileOverlay" />
 
       {/* Top: Logo */}
       <div className="menuMobileTop">
-        <div className="menuLogoEyebrow">— KAÇIŞ YOK —</div>
+        <div className="menuLogoEyebrow">{"\u2014 KA\u00c7I\u015e YOK \u2014"}</div>
         <h1 className="menuLogo">
-        <span className="menuLogoLine1">NOSCAPE</span>
-          
-          
+          <span className="menuLogoLine1">NOSCAPE</span>
         </h1>
         <div className="menuLogoDivider">
           <span className="menuLogoDividerLine" />
@@ -74,7 +72,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
 
       {/* Bottom: Nav buttons + Footer */}
       <div className="menuMobileBottom">
-        <nav className="menuNav" aria-label="Ana menü">
+        <nav className="menuNav" aria-label={"Ana men\u00fc"}>
           {menuItems.map((item, i) => (
             <button
               key={item.id}
@@ -88,16 +86,14 @@ export function MenuScene({ onStart }: MenuSceneProps) {
             >
               <span className="menuNavBtnBar" />
               <span className="menuNavBtnLabel">{item.label}</span>
-              {item.variant === "primary" && (
-                <span className="menuNavBtnArrow">›</span>
-              )}
+              {item.variant === "primary" && <span className="menuNavBtnArrow">{"\u203a"}</span>}
             </button>
           ))}
         </nav>
 
         <div className="menuFooter">
           <span className="menuFooterBadge">v0.1 BETA</span>
-          <span className="menuFooterSep">·</span>
+          <span className="menuFooterSep">{"\u00b7"}</span>
           <span className="menuFooterText">NOSCAPE</span>
         </div>
       </div>
@@ -116,12 +112,12 @@ export function MenuScene({ onStart }: MenuSceneProps) {
           type="button"
           onClick={() => setPanel("MAIN")}
         >
-          <span className="settingsBackArrow">←</span>
-          <span>Ana Menü</span>
+          <span className="settingsBackArrow">{"\u2190"}</span>
+          <span>{"Ana Men\u00fc"}</span>
         </button>
         <div className="settingsTitle">
-          <span className="settingsTitleAccent">—</span> AYARLAR{" "}
-          <span className="settingsTitleAccent">—</span>
+          <span className="settingsTitleAccent">{"\u2014"}</span> AYARLAR{" "}
+          <span className="settingsTitleAccent">{"\u2014"}</span>
         </div>
       </div>
 
@@ -129,14 +125,14 @@ export function MenuScene({ onStart }: MenuSceneProps) {
       <div className="settingsTabBar" role="tablist" aria-label="Ayarlar sekmeleri">
         {(["VIDEO", "AUDIO", "LANG"] as SettingsTab[]).map((tab) => {
           const labels: Record<SettingsTab, string> = {
-            VIDEO: "Görüntü",
+            VIDEO: "G\u00f6r\u00fcnt\u00fc",
             AUDIO: "Ses",
             LANG: "Dil",
           };
           const icons: Record<SettingsTab, string> = {
-            VIDEO: "◈",
-            AUDIO: "◎",
-            LANG: "◉",
+            VIDEO: "\u25c8",
+            AUDIO: "\u25ce",
+            LANG: "\u25c9",
           };
           return (
             <button
@@ -160,7 +156,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
           <div className="settingsGroup">
             <div className="settingsRow">
               <label className="settingsRowLabel" htmlFor="video-quality">
-                Görüntü Kalitesi
+                {"G\u00f6r\u00fcnt\u00fc Kalitesi"}
               </label>
               <select
                 id="video-quality"
@@ -168,16 +164,16 @@ export function MenuScene({ onStart }: MenuSceneProps) {
                 value={videoQuality}
                 onChange={(e) => setVideoQuality(e.target.value as "LOW" | "MEDIUM" | "HIGH")}
               >
-                <option value="LOW">Düşük</option>
+                <option value="LOW">{"D\u00fc\u015f\u00fck"}</option>
                 <option value="MEDIUM">Orta</option>
-                <option value="HIGH">Yüksek</option>
+                <option value="HIGH">{"Y\u00fcksek"}</option>
               </select>
             </div>
 
             <div className="settingsRow settingsRow--slider">
               <div className="settingsRowTop">
                 <label className="settingsRowLabel" htmlFor="brightness-slider">
-                  Parlaklık
+                  Parlakl\u0131k
                 </label>
                 <span className="settingsRowValue">{brightness}</span>
               </div>
@@ -240,7 +236,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
                 value={language}
                 onChange={(e) => setLanguage(e.target.value as "tr" | "en")}
               >
-                <option value="tr">Türkçe</option>
+                <option value="tr">{"T\u00fcrk\u00e7e"}</option>
                 <option value="en">English (deneysel)</option>
               </select>
             </div>
@@ -255,7 +251,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
                   onChange={(e) => setSubtitlesOn(e.target.checked)}
                 />
                 <span className="settingsCheckMark" />
-                <span className="settingsRowLabel">Altyazıları göster</span>
+                <span className="settingsRowLabel">{"Altyaz\u0131lar\u0131 g\u00f6ster"}</span>
               </label>
             </div>
           </div>
