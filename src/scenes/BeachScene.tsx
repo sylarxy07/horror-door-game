@@ -101,11 +101,41 @@ type B0HitboxRect = {
   height: number;
 };
 
+type B0BgVariant = "key" | "nokey";
+
 const FADE_MS = 500;
 const FADE_HALF_MS = Math.floor(FADE_MS / 2);
+const B0_FOG_START_OPACITY = 0.65;
+const B0_FOG_END_OPACITY = 0.2;
+const B0_FOG_FADE_MS = 12000;
+const B0_BG_KEY_PRIMARY = "/assets/img/beach/beach_b0_key.png";
+const B0_BG_NOKEY_PRIMARY = "/assets/img/beach/beach_b0_nokey.png";
+const B0_BG_KEY_FALLBACK = "/assets/img/beach/beach_b0_v2_with_key.png";
+const B0_BG_NOKEY_FALLBACK = "/assets/img/beach/beach_b0_v2.png";
+const B0_BACKGROUND_HAS_NOTE = false;
+const B0_RENDER_NOTE_SPRITE = !B0_BACKGROUND_HAS_NOTE;
+const B0_NOTE_TITLE = "Islak Not";
+const B0_NOTE_LINES = [
+  "Sis burada hava değil; bir perde.",
+  "Ada sandığın şey, seni aynı döngüye sürükleyen bir sistem.",
+  "Kırmızı ışığı gördüğünde kaçma—o bir çağrı işareti.",
+  "Kapılar seni unutmaz.",
+  "",
+  "Esintiyi takip et.",
+  "Batan güneşe değil, kıyıdaki koylara bak.",
+  "Çatlakların arasından geç.",
+  "Ardından izlerini say.",
+  "Dön ve çizgiyi izle.",
+] as const;
+const B0_AMBIENT_SRC = "/assets/audio/b0_ambience.mp3";
+const B0_AMBIENT_VOLUME = 0.3;
+const B0_AMBIENT_FADE_IN_MS = 1000;
+const B0_AMBIENT_FADE_OUT_MS = 650;
+const B0_AMBIENT_VISIBILITY_FADE_MS = 220;
 const S1_PUZZLE_PIECES: readonly S1PuzzlePiece[] = ["A", "B", "C", "D", "E"];
 const S1_PUZZLE_TARGET: readonly S1PuzzlePiece[] = ["E", "B", "C", "A", "D"];
 const B0_NOTE_HIT: B0HitboxRect = { left: 46, top: 66, width: 20, height: 20 };
+const B0_KEY_HIT: B0HitboxRect = { left: 55.2, top: 67.9, width: 14, height: 14 };
 const OBJECT_VISUAL_TUNING = {
   toneFilter: "brightness(0.9) contrast(0.95) saturate(0.8)",
   hazeBlur: "blur(0.2px)",
@@ -119,21 +149,21 @@ const BEACH_STEPS: readonly BeachSceneStep[] = [
     id: "run1-b0",
     run: 1,
     scene: "B0",
-    bg: "/assets/img/beach/beach_b0.png",
+    bg: B0_BG_KEY_PRIMARY,
     hotspots: [
       {
         id: "S1_KEY",
         label: "Anahtar",
         obj: "/assets/img/beach/obj1_key.png",
-        pos: { left: 83.3, top: 80.4 },
-        renderSprite: true,
+        pos: { left: 62.2, top: 74.9 },
+        renderSprite: false,
       },
       {
         id: "S1_NOTE",
         label: "Not",
         obj: "/assets/img/beach/obj3_note.png",
         pos: { left: 77.3, top: 84.4 },
-        renderSprite: false,
+        renderSprite: B0_RENDER_NOTE_SPRITE,
       },
     ],
   },
@@ -248,6 +278,11 @@ export function BeachScene({
   const [s1SelectedPiece, setS1SelectedPiece] = useState<S1PuzzlePiece | null>(null);
   const [s1PulseSlotIndex, setS1PulseSlotIndex] = useState<number | null>(null);
   const [s1PuzzleShakeOn, setS1PuzzleShakeOn] = useState(false);
+  const [fogOpacity, setFogOpacity] = useState(B0_FOG_START_OPACITY);
+  const [b0BgFallback, setB0BgFallback] = useState<{ key: boolean; nokey: boolean }>({
+    key: false,
+    nokey: false,
+  });
 
   const [posMode, setPosMode] = useState(false);
   const [draggingHotspotId, setDraggingHotspotId] = useState<string | null>(null);
@@ -257,6 +292,17 @@ export function BeachScene({
   const dragRef = useRef<DragMeta | null>(null);
   const timersRef = useRef<number[]>([]);
   const posToastTimerRef = useRef<number | null>(null);
+  const fogRafRef = useRef<number | null>(null);
+  const fogStartTimeRef = useRef<number | null>(null);
+  const fogAnimActiveRef = useRef(false);
+  const b0AmbientAudioRef = useRef<HTMLAudioElement | null>(null);
+  const b0AmbientFadeRafRef = useRef<number | null>(null);
+  const b0AmbientMissingRef = useRef(false);
+  const b0AmbientWarnedRef = useRef(false);
+  const b0AmbientPendingAutoStartRef = useRef(false);
+  const b0AmbientMutedAutoplayRef = useRef(false);
+  const b0AmbientGestureUnlockedRef = useRef(false);
+  const b0AmbientResumeOnVisibleRef = useRef(false);
 
   const isDev = import.meta.env.DEV;
 
@@ -284,11 +330,25 @@ export function BeachScene({
   const runLabel = hatchVisible ? "RUN2" : currentStep.run === 1 ? "RUN1" : "RUN2";
   const activeSceneId = activeStep.scene;
   const isB0Scene = activeSceneId === "B0";
+  const keyCollected = collectedIds.has("S1_KEY");
+  const b0BgVariant: B0BgVariant = keyCollected ? "nokey" : "key";
+  const activeBgSrc = isB0Scene
+    ? b0BgVariant === "key"
+      ? b0BgFallback.key
+        ? B0_BG_KEY_FALLBACK
+        : B0_BG_KEY_PRIMARY
+      : b0BgFallback.nokey
+        ? B0_BG_NOKEY_FALLBACK
+        : B0_BG_NOKEY_PRIMARY
+    : activeStep.bg;
   const activeSceneHotspots = activeStep.hotspots;
-  const s1NoteHotspot = activeSceneHotspots.find((hotspot) => hotspot.id === "S1_NOTE");
   const visibleHotspots = posMode
     ? activeSceneHotspots
     : activeSceneHotspots.filter((hotspot) => !collectedIds.has(hotspot.id));
+  const b0KeyHotspot = useMemo(
+    () => (isB0Scene ? visibleHotspots.find((hotspot) => hotspot.id === "S1_KEY") ?? null : null),
+    [isB0Scene, visibleHotspots]
+  );
   const b0NoteHotspot = useMemo(
     () => (isB0Scene ? visibleHotspots.find((hotspot) => hotspot.id === "S1_NOTE") ?? null : null),
     [isB0Scene, visibleHotspots]
@@ -297,17 +357,15 @@ export function BeachScene({
   const b0ItemsVisibleCount = activeSceneId === "B0" ? visibleHotspots.length : 0;
   const collectedCount = collectedIds.size;
   const bgName = useMemo(() => {
-    const parts = activeStep.bg.split("/");
-    return parts[parts.length - 1] ?? activeStep.bg;
-  }, [activeStep.bg]);
+    const parts = activeBgSrc.split("/");
+    return parts[parts.length - 1] ?? activeBgSrc;
+  }, [activeBgSrc]);
 
   const isS1KeyPanel = overlayTarget === "scene" && selectedHotspot?.id === "S1_KEY";
   const isS1NotePanel = overlayTarget === "scene" && selectedHotspot?.id === "S1_NOTE";
-  const overlayTitle = isS1KeyPanel ? "Paslı Anahtar" : isS1NotePanel ? "Kenar Notu" : "Nesneyi incele";
+  const overlayTitle = isS1KeyPanel ? "Paslı Anahtar" : isS1NotePanel ? B0_NOTE_TITLE : "Nesneyi incele";
   const overlayDescription = isS1KeyPanel
     ? "Soğuk… sanki biraz önce tutulmuş."
-    : isS1NotePanel
-      ? "Halkanın çentikleri yerlerini ister. Kenarlarından başla."
     : overlayTarget === "hatch"
       ? "Kapak acik. Asagi inis icin gecis hazir."
       : "Kayit tamamlandi. Panel kapaninca bir sonraki sahneye gecilecek.";
@@ -335,6 +393,207 @@ export function BeachScene({
     }
     timersRef.current = [];
   }, []);
+
+  const stopFogAnimation = useCallback(() => {
+    if (fogRafRef.current !== null) {
+      window.cancelAnimationFrame(fogRafRef.current);
+      fogRafRef.current = null;
+    }
+    fogStartTimeRef.current = null;
+    fogAnimActiveRef.current = false;
+  }, []);
+
+  const onB0ImageError = useCallback((variant: B0BgVariant) => {
+    setB0BgFallback((prev) => {
+      if (prev[variant]) return prev;
+      return {
+        ...prev,
+        [variant]: true,
+      };
+    });
+  }, []);
+
+  const stopB0AmbientFade = useCallback(() => {
+    if (b0AmbientFadeRafRef.current !== null) {
+      window.cancelAnimationFrame(b0AmbientFadeRafRef.current);
+      b0AmbientFadeRafRef.current = null;
+    }
+  }, []);
+
+  const hasUserActivation = useCallback(() => {
+    if (typeof navigator === "undefined") return false;
+    const userActivation = (navigator as Navigator & {
+      userActivation?: { hasBeenActive?: boolean };
+    }).userActivation;
+    return Boolean(userActivation?.hasBeenActive);
+  }, []);
+
+  const ensureB0AmbientAudio = useCallback(() => {
+    if (b0AmbientAudioRef.current) return b0AmbientAudioRef.current;
+
+    const audio = new Audio(B0_AMBIENT_SRC);
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = 0;
+
+    audio.addEventListener("error", () => {
+      b0AmbientMissingRef.current = true;
+      if (b0AmbientWarnedRef.current) return;
+      b0AmbientWarnedRef.current = true;
+      console.warn(
+        `[BeachScene] Ambient dosyasi bulunamadi: ${B0_AMBIENT_SRC}. ` +
+          "Dosyayi public/assets/audio/b0_ambience.mp3 yoluna ekleyin."
+      );
+    });
+
+    b0AmbientAudioRef.current = audio;
+    return audio;
+  }, []);
+
+  const fadeB0AmbientTo = useCallback(
+    (audio: HTMLAudioElement, targetVolume: number, durationMs: number, onComplete?: () => void) => {
+      stopB0AmbientFade();
+
+      const from = clamp(audio.volume, 0, 1);
+      const to = clamp(targetVolume, 0, 1);
+      if (durationMs <= 0 || Math.abs(from - to) < 0.001) {
+        audio.volume = to;
+        onComplete?.();
+        return;
+      }
+
+      const startedAt = performance.now();
+      const step = (now: number) => {
+        const progress = clamp((now - startedAt) / durationMs, 0, 1);
+        const eased = 1 - (1 - progress) * (1 - progress);
+        const next = from + (to - from) * eased;
+        audio.volume = clamp(next, 0, 1);
+
+        if (progress < 1) {
+          b0AmbientFadeRafRef.current = window.requestAnimationFrame(step);
+          return;
+        }
+
+        b0AmbientFadeRafRef.current = null;
+        onComplete?.();
+      };
+
+      b0AmbientFadeRafRef.current = window.requestAnimationFrame(step);
+    },
+    [stopB0AmbientFade]
+  );
+
+  const attemptB0AmbientAutoplay = useCallback(async () => {
+    if (!isB0Scene || document.hidden || b0AmbientMissingRef.current) return;
+
+    const audio = ensureB0AmbientAudio();
+    b0AmbientPendingAutoStartRef.current = false;
+    b0AmbientResumeOnVisibleRef.current = true;
+    b0AmbientMutedAutoplayRef.current = false;
+    audio.loop = true;
+    audio.volume = 0;
+    audio.muted = true;
+
+    try {
+      if (audio.paused) {
+        await audio.play();
+      }
+    } catch {
+      audio.muted = false;
+      b0AmbientPendingAutoStartRef.current = true;
+      return;
+    }
+
+    b0AmbientMutedAutoplayRef.current = true;
+
+    if (b0AmbientGestureUnlockedRef.current || hasUserActivation()) {
+      audio.muted = false;
+      b0AmbientMutedAutoplayRef.current = false;
+      fadeB0AmbientTo(audio, B0_AMBIENT_VOLUME, B0_AMBIENT_FADE_IN_MS);
+    }
+  }, [ensureB0AmbientAudio, fadeB0AmbientTo, hasUserActivation, isB0Scene]);
+
+  const onB0AmbientGesture = useCallback(async () => {
+    b0AmbientGestureUnlockedRef.current = true;
+    if (!isB0Scene || document.hidden || b0AmbientMissingRef.current) return;
+
+    const audio = ensureB0AmbientAudio();
+    b0AmbientResumeOnVisibleRef.current = true;
+
+    if (!audio.paused && (audio.muted || b0AmbientMutedAutoplayRef.current)) {
+      audio.muted = false;
+      b0AmbientMutedAutoplayRef.current = false;
+      b0AmbientPendingAutoStartRef.current = false;
+      fadeB0AmbientTo(audio, B0_AMBIENT_VOLUME, B0_AMBIENT_FADE_IN_MS);
+      return;
+    }
+
+    if (!audio.paused) {
+      b0AmbientPendingAutoStartRef.current = false;
+      if (audio.volume < B0_AMBIENT_VOLUME - 0.01) {
+        fadeB0AmbientTo(audio, B0_AMBIENT_VOLUME, B0_AMBIENT_FADE_IN_MS);
+      }
+      return;
+    }
+
+    audio.muted = false;
+    audio.volume = 0;
+    try {
+      await audio.play();
+    } catch {
+      b0AmbientPendingAutoStartRef.current = true;
+      return;
+    }
+
+    b0AmbientPendingAutoStartRef.current = false;
+    b0AmbientMutedAutoplayRef.current = false;
+    fadeB0AmbientTo(audio, B0_AMBIENT_VOLUME, B0_AMBIENT_FADE_IN_MS);
+  }, [ensureB0AmbientAudio, fadeB0AmbientTo, isB0Scene]);
+
+  const fadeOutAndStopB0Ambient = useCallback(() => {
+    b0AmbientResumeOnVisibleRef.current = false;
+    b0AmbientPendingAutoStartRef.current = false;
+    b0AmbientMutedAutoplayRef.current = false;
+    const audio = b0AmbientAudioRef.current;
+    if (!audio) return;
+
+    fadeB0AmbientTo(audio, 0, B0_AMBIENT_FADE_OUT_MS, () => {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.muted = false;
+    });
+  }, [fadeB0AmbientTo]);
+
+  const pauseB0AmbientForVisibility = useCallback(() => {
+    const audio = b0AmbientAudioRef.current;
+    if (!audio) return;
+
+    b0AmbientResumeOnVisibleRef.current = !audio.paused && isB0Scene;
+    if (audio.paused) return;
+
+    fadeB0AmbientTo(audio, 0, B0_AMBIENT_VISIBILITY_FADE_MS, () => {
+      audio.pause();
+    });
+  }, [fadeB0AmbientTo, isB0Scene]);
+
+  const resumeB0AmbientForVisibility = useCallback(async () => {
+    if (!isB0Scene || !b0AmbientResumeOnVisibleRef.current || b0AmbientMissingRef.current) return;
+
+    const audio = ensureB0AmbientAudio();
+    try {
+      await audio.play();
+    } catch {
+      b0AmbientPendingAutoStartRef.current = true;
+      return;
+    }
+
+    if (audio.muted || b0AmbientMutedAutoplayRef.current) {
+      audio.volume = 0;
+      return;
+    }
+
+    fadeB0AmbientTo(audio, B0_AMBIENT_VOLUME, B0_AMBIENT_FADE_IN_MS);
+  }, [ensureB0AmbientAudio, fadeB0AmbientTo, isB0Scene]);
 
   const showPosToast = useCallback(
     (sceneId: string, left: number, top: number) => {
@@ -685,6 +944,90 @@ export function BeachScene({
   }, []);
 
   useEffect(() => {
+    if (!isB0Scene) return;
+    void attemptB0AmbientAutoplay();
+  }, [attemptB0AmbientAutoplay, isB0Scene]);
+
+  useEffect(() => {
+    if (!isB0Scene) return;
+
+    const onFirstInteraction = () => {
+      void onB0AmbientGesture();
+    };
+
+    window.addEventListener("pointerdown", onFirstInteraction, { passive: true });
+    window.addEventListener("touchstart", onFirstInteraction, { passive: true });
+    window.addEventListener("keydown", onFirstInteraction);
+
+    return () => {
+      window.removeEventListener("pointerdown", onFirstInteraction);
+      window.removeEventListener("touchstart", onFirstInteraction);
+      window.removeEventListener("keydown", onFirstInteraction);
+    };
+  }, [isB0Scene, onB0AmbientGesture]);
+
+  useEffect(() => {
+    if (isB0Scene) return;
+    fadeOutAndStopB0Ambient();
+  }, [fadeOutAndStopB0Ambient, isB0Scene]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        pauseB0AmbientForVisibility();
+        return;
+      }
+      void resumeB0AmbientForVisibility();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [pauseB0AmbientForVisibility, resumeB0AmbientForVisibility]);
+
+  useEffect(() => {
+    if (!isB0Scene) {
+      stopFogAnimation();
+      return;
+    }
+
+    // Guard against duplicate loops in StrictMode effect re-runs.
+    if (fogAnimActiveRef.current) return;
+
+    setFogOpacity(B0_FOG_START_OPACITY);
+    fogAnimActiveRef.current = true;
+    fogStartTimeRef.current = null;
+
+    const tick = (now: number) => {
+      if (!fogAnimActiveRef.current) return;
+
+      if (fogStartTimeRef.current === null) {
+        fogStartTimeRef.current = now;
+      }
+
+      const elapsed = now - fogStartTimeRef.current;
+      const progress = clamp(elapsed / B0_FOG_FADE_MS, 0, 1);
+      const easeOutProgress = 1 - (1 - progress) * (1 - progress);
+      const nextOpacity = B0_FOG_START_OPACITY + (B0_FOG_END_OPACITY - B0_FOG_START_OPACITY) * easeOutProgress;
+      setFogOpacity(nextOpacity);
+
+      if (progress >= 1) {
+        stopFogAnimation();
+        return;
+      }
+
+      fogRafRef.current = window.requestAnimationFrame(tick);
+    };
+
+    fogRafRef.current = window.requestAnimationFrame(tick);
+
+    return () => {
+      stopFogAnimation();
+    };
+  }, [isB0Scene, stopFogAnimation]);
+
+  useEffect(() => {
     if (activeSceneId !== "S1" || hatchVisible || busy || overlayOpen || s1PuzzleOpen) return;
     if (activeSceneHotspots.length > 0) return;
 
@@ -735,8 +1078,19 @@ export function BeachScene({
         window.clearTimeout(posToastTimerRef.current);
         posToastTimerRef.current = null;
       }
+      stopB0AmbientFade();
+      b0AmbientPendingAutoStartRef.current = false;
+      b0AmbientMutedAutoplayRef.current = false;
+      b0AmbientResumeOnVisibleRef.current = false;
+      const audio = b0AmbientAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = "";
+        audio.load();
+        b0AmbientAudioRef.current = null;
+      }
     };
-  }, [clearTimers]);
+  }, [clearTimers, stopB0AmbientFade]);
 
   return (
     <div
@@ -759,9 +1113,10 @@ export function BeachScene({
       {isB0Scene ? (
         <>
           <img
-            src={activeStep.bg}
+            src={activeBgSrc}
             alt=""
             draggable={false}
+            onError={() => onB0ImageError(b0BgVariant)}
             style={{
               position: "absolute",
               inset: 0,
@@ -778,9 +1133,10 @@ export function BeachScene({
             }}
           />
           <img
-            src={activeStep.bg}
+            src={activeBgSrc}
             alt=""
             draggable={false}
+            onError={() => onB0ImageError(b0BgVariant)}
             style={{
               position: "absolute",
               inset: 0,
@@ -795,7 +1151,7 @@ export function BeachScene({
         </>
       ) : (
         <img
-          src={activeStep.bg}
+          src={activeBgSrc}
           alt=""
           draggable={false}
           style={{
@@ -811,6 +1167,25 @@ export function BeachScene({
         />
       )}
 
+      {isB0Scene && (
+        <>
+          <div
+            aria-hidden
+            className="fogOverlay fogBase"
+            style={{
+              opacity: fogOpacity,
+            }}
+          />
+          <div
+            aria-hidden
+            className="fogOverlay groundFog"
+            style={{
+              opacity: fogOpacity * 0.6,
+            }}
+          />
+        </>
+      )}
+
       <div
         aria-hidden
         style={{
@@ -823,30 +1198,17 @@ export function BeachScene({
         {visibleHotspots.map((hotspot) => {
           const isS1Key = hotspot.id === "S1_KEY";
           const isS1Note = hotspot.id === "S1_NOTE";
-          const isS1ClusterKey = activeSceneId === "B0" && isS1Key;
-          const isS1ClusterNote = activeSceneId === "B0" && isS1Note;
           const shouldRenderSprite = hotspot.renderSprite !== false;
-          const hotspotPosBase = getHotspotPosition(hotspot);
-          const s1NotePos = s1NoteHotspot ? getHotspotPosition(s1NoteHotspot) : null;
-          const hotspotPos =
-            isS1ClusterKey && s1NotePos && shouldRenderSprite
-              ? {
-                  left: clamp(s1NotePos.left + 1.8, 0, 100),
-                  top: clamp(s1NotePos.top - 0.6, 0, 100),
-                }
-              : hotspotPosBase;
+          const hotspotPos = getHotspotPosition(hotspot);
           const hotspotScale = busy ? 1 : pulseScale;
           const hotspotZIndex = isS1Key ? 30 : isS1Note ? 20 : 1;
           const shouldRenderShadow = !isS1Key;
-          const hotspotImageFilter = isS1ClusterKey
-            ? "drop-shadow(0 6px 6px rgba(0,0,0,0.35))"
-            : isS1Key
-              ? OBJECT_VISUAL_TUNING.dropShadow
-              : `${OBJECT_VISUAL_TUNING.toneFilter} ${OBJECT_VISUAL_TUNING.hazeBlur} ${OBJECT_VISUAL_TUNING.dropShadow}`;
+          const hotspotImageFilter = isS1Key
+            ? OBJECT_VISUAL_TUNING.dropShadow
+            : `${OBJECT_VISUAL_TUNING.toneFilter} ${OBJECT_VISUAL_TUNING.hazeBlur} ${OBJECT_VISUAL_TUNING.dropShadow}`;
           const hotspotMixBlendMode = isS1Key ? "normal" : "multiply";
-          const hotspotImageTransform = isS1ClusterKey
-            ? "rotate(0deg) rotateX(0deg) rotateZ(0deg) scale(0.90)"
-            : isS1Key
+          const hotspotImageTransform =
+            isS1Key || isS1Note
               ? `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`
               : `perspective(900px) rotateX(58deg) rotateZ(-8deg) scale(${hotspotScale})`;
 
@@ -894,12 +1256,9 @@ export function BeachScene({
                     objectFit: "contain",
                     display: "block",
                     background: "transparent",
-                    opacity: isS1ClusterNote ? 0.96 : pulseOpacity,
-                    filter: isS1ClusterNote ? "brightness(0.95)" : undefined,
-                    transform: isS1ClusterNote ? "rotate(4deg) scale(1.08)" : `scale(${noteScale})`,
+                    opacity: pulseOpacity,
+                    transform: `scale(${noteScale})`,
                     transformOrigin: "50% 50%",
-                    position: isS1ClusterNote ? "relative" : undefined,
-                    zIndex: isS1ClusterNote ? 20 : undefined,
                     transition: "transform 220ms ease, opacity 220ms ease",
                   }}
                 />
@@ -988,8 +1347,6 @@ export function BeachScene({
                     transformOrigin: "50% 50%",
                     filter: hotspotImageFilter,
                     mixBlendMode: hotspotMixBlendMode,
-                    position: isS1ClusterKey ? "relative" : undefined,
-                    zIndex: isS1ClusterKey ? 30 : undefined,
                     transition: "transform 220ms ease, opacity 220ms ease",
                   }}
                 />
@@ -1015,6 +1372,34 @@ export function BeachScene({
           );
         })}
       </div>
+
+      {isB0Scene && b0KeyHotspot && (
+        <button
+          type="button"
+          className="beachHitboxButton"
+          onClick={() => onHotspotClick(b0KeyHotspot)}
+          onPointerDown={(e) => onHotspotPointerDown(e, b0KeyHotspot)}
+          disabled={busy}
+          aria-label={`${b0KeyHotspot.label} hitbox`}
+          style={{
+            position: "absolute",
+            left: `${B0_KEY_HIT.left}%`,
+            top: `${B0_KEY_HIT.top}%`,
+            width: `${B0_KEY_HIT.width}%`,
+            height: `${B0_KEY_HIT.height}%`,
+            border: 0,
+            outline: "none",
+            borderRadius: 6,
+            background: "transparent",
+            margin: 0,
+            padding: 0,
+            zIndex: 12,
+            pointerEvents: overlayOpen || s1PuzzleOpen || busy ? "none" : "auto",
+            cursor: "default",
+            touchAction: posMode ? "none" : "manipulation",
+          }}
+        />
+      )}
 
       {isB0Scene && b0NoteHotspot && (
         <button
@@ -1071,6 +1456,7 @@ export function BeachScene({
               {getHotspotPosition(activeSceneHotspots[0]).top.toFixed(1)}
             </div>
           )}
+          {isB0Scene && <div style={{ fontSize: 11, opacity: 0.8 }}>fog: {fogOpacity.toFixed(2)}</div>}
           {activeSceneId === "B0" && <div>B0 items visible: {b0ItemsVisibleCount}</div>}
         </div>
       )}
@@ -1228,154 +1614,157 @@ export function BeachScene({
             aria-label="Anahtar Halkası"
             className={`s1PuzzlePanel ${s1PuzzleShakeOn ? "s1PuzzlePanel--shake" : ""}`}
             style={{
-              width: "min(94vw, 640px)",
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,.22)",
-              background: "rgba(11,15,22,.96)",
-              boxShadow: "0 20px 56px rgba(0,0,0,.5)",
-              padding: "16px 14px",
+              width: "min(95vw, 680px)",
               display: "grid",
-              gap: 12,
+              placeItems: "center",
             }}
           >
-            <div className="s1PuzzleTitle" style={{ color: "#eef2fb", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>
-              ANAHTAR HALKASI
-            </div>
-            <div className="s1PuzzleSubtitle" style={{ color: "#d7e0f5", fontSize: 13, lineHeight: 1.35 }}>
-              Parçayı seç, sonra boş bir yuvaya dokun.
-            </div>
+            <div className="s1PuzzleTabletFrame">
+              <div aria-hidden className="s1PuzzleTabletBezel" />
+              <div className="s1PuzzleTabletScreen">
+                <div className="s1PuzzleTitle" style={{ color: "#eef2fb", fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>
+                  Anahtar Halkası
+                </div>
 
-            <div
-              className="s1PuzzleSlots"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-                gap: 8,
-              }}
-            >
-              {s1PuzzleSlots.map((slotPiece, slotIndex) => (
-                <button
-                  key={`slot-${slotIndex}`}
-                  type="button"
-                  onClick={() => onS1SlotClick(slotIndex)}
-                  disabled={s1PuzzleAdvancing}
-                  className={`s1PuzzleSlot ${slotPiece ? "s1PuzzleSlot--filled" : ""} ${
-                    s1PulseSlotIndex === slotIndex ? "s1PuzzleSlot--pulse" : ""
-                  }`}
+                <div
+                  className="s1PuzzleSlots"
                   style={{
-                    minHeight: 58,
-                    borderRadius: 12,
-                    border: "1px dashed rgba(255,255,255,.34)",
-                    background: slotPiece ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-                    color: "#f2f5fb",
-                    fontSize: 20,
-                    fontWeight: 800,
-                    cursor: s1PuzzleAdvancing ? "default" : "pointer",
-                    touchAction: "manipulation",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                    gap: 8,
                   }}
                 >
-                  {slotPiece ?? "•"}
-                </button>
-              ))}
-            </div>
+                  {s1PuzzleSlots.map((slotPiece, slotIndex) => (
+                    <button
+                      key={`slot-${slotIndex}`}
+                      type="button"
+                      onClick={() => onS1SlotClick(slotIndex)}
+                      disabled={s1PuzzleAdvancing}
+                      className={`s1PuzzleSlot ${slotPiece ? "s1PuzzleSlot--filled" : ""} ${
+                        s1PulseSlotIndex === slotIndex ? "s1PuzzleSlot--pulse" : ""
+                      }`}
+                      style={{
+                        minHeight: 58,
+                        borderRadius: 12,
+                        border: "1px dashed rgba(255,255,255,.34)",
+                        background: slotPiece ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                        color: "#f2f5fb",
+                        fontSize: 20,
+                        fontWeight: 800,
+                        cursor: s1PuzzleAdvancing ? "default" : "pointer",
+                        touchAction: "manipulation",
+                      }}
+                    >
+                      {slotPiece ?? "•"}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="s1PuzzleLabel" style={{ color: "#d7e0f5", fontSize: 12, letterSpacing: ".04em", opacity: 0.88 }}>
-              PARÇALAR
-            </div>
-            <div
-              className="s1PuzzlePieces"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-                gap: 8,
-              }}
-            >
-              {S1_PUZZLE_PIECES.map((piece) => {
-                const isSelected = s1SelectedPiece === piece;
-                const isPlaced = s1PuzzleSlots.includes(piece) && !isSelected;
-                return (
+                <div className="s1PuzzleLabel" style={{ color: "#d7e0f5", fontSize: 12, letterSpacing: ".04em", opacity: 0.88 }}>
+                  PARÇALAR
+                </div>
+                <div
+                  className="s1PuzzlePieces"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {S1_PUZZLE_PIECES.map((piece) => {
+                    const isSelected = s1SelectedPiece === piece;
+                    const isPlaced = s1PuzzleSlots.includes(piece) && !isSelected;
+                    return (
+                      <button
+                        key={piece}
+                        type="button"
+                        onClick={() => onS1PieceSelect(piece)}
+                        disabled={s1PuzzleAdvancing}
+                        className={`s1PuzzlePiece ${isSelected ? "s1PuzzlePiece--selected" : ""} ${
+                          isPlaced ? "s1PuzzlePiece--placed" : ""
+                        }`}
+                        style={{
+                          minHeight: 56,
+                          borderRadius: 12,
+                          border: isSelected ? "1px solid rgba(132,196,255,.95)" : "1px solid rgba(255,255,255,.3)",
+                          background: isSelected
+                            ? "rgba(102,165,240,.26)"
+                            : isPlaced
+                              ? "rgba(255,255,255,.06)"
+                              : "rgba(255,255,255,.12)",
+                          color: "#f2f5fb",
+                          fontSize: 20,
+                          fontWeight: 800,
+                          opacity: isPlaced ? 0.7 : 1,
+                          cursor: s1PuzzleAdvancing ? "default" : "pointer",
+                          touchAction: "manipulation",
+                        }}
+                      >
+                        {piece}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="s1PuzzleFooter" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div className="s1PuzzleSelected" style={{ color: "#eef2fb", fontSize: 13 }}>
+                    Seçili parça: {s1SelectedPiece ?? "Yok"}
+                  </div>
                   <button
-                    key={piece}
                     type="button"
-                    onClick={() => onS1PieceSelect(piece)}
+                    onClick={() => {
+                      if (s1PuzzleAdvancing) return;
+                      setS1PuzzleStatus(null);
+                      setS1SelectedPiece(null);
+                      setS1PuzzleSlots([null, null, null, null, null]);
+                      setS1PulseSlotIndex(null);
+                      setS1PuzzleShakeOn(false);
+                    }}
                     disabled={s1PuzzleAdvancing}
-                    className={`s1PuzzlePiece ${isSelected ? "s1PuzzlePiece--selected" : ""} ${
-                      isPlaced ? "s1PuzzlePiece--placed" : ""
-                    }`}
+                    className="s1PuzzleResetBtn"
                     style={{
-                      minHeight: 56,
-                      borderRadius: 12,
-                      border: isSelected ? "1px solid rgba(132,196,255,.95)" : "1px solid rgba(255,255,255,.3)",
-                      background: isSelected
-                        ? "rgba(102,165,240,.26)"
-                        : isPlaced
-                          ? "rgba(255,255,255,.06)"
-                          : "rgba(255,255,255,.12)",
-                      color: "#f2f5fb",
-                      fontSize: 20,
-                      fontWeight: 800,
-                      opacity: isPlaced ? 0.7 : 1,
+                      minHeight: 44,
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,.28)",
+                      background: "rgba(255,255,255,.08)",
+                      color: "#eef2fb",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      padding: "0 12px",
                       cursor: s1PuzzleAdvancing ? "default" : "pointer",
                       touchAction: "manipulation",
                     }}
                   >
-                    {piece}
+                    Sıfırla
                   </button>
-                );
-              })}
-            </div>
+                </div>
 
-            <div className="s1PuzzleFooter" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div className="s1PuzzleSelected" style={{ color: "#eef2fb", fontSize: 13 }}>
-                Seçili parça: {s1SelectedPiece ?? "Yok"}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (s1PuzzleAdvancing) return;
-                  setS1PuzzleStatus(null);
-                  setS1SelectedPiece(null);
-                  setS1PuzzleSlots([null, null, null, null, null]);
-                  setS1PulseSlotIndex(null);
-                  setS1PuzzleShakeOn(false);
-                }}
-                disabled={s1PuzzleAdvancing}
-                className="s1PuzzleResetBtn"
-                style={{
-                  minHeight: 40,
-                  borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,.28)",
-                  background: "rgba(255,255,255,.08)",
-                  color: "#eef2fb",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  padding: "0 12px",
-                  cursor: s1PuzzleAdvancing ? "default" : "pointer",
-                  touchAction: "manipulation",
-                }}
-              >
-                Sıfırla
-              </button>
-            </div>
+                {s1PuzzleStatus && (
+                  <div
+                    className={`s1PuzzleStatus ${s1PuzzleStatus === "Anahtar kilidi hatırladı." ? "s1PuzzleStatus--ok" : ""}`}
+                    style={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,.18)",
+                      background:
+                        s1PuzzleStatus === "Anahtar kilidi hatırladı."
+                          ? "rgba(62,170,106,.26)"
+                          : "rgba(255,255,255,.08)",
+                      color: "#eef2fb",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      lineHeight: 1.35,
+                      padding: "10px 12px",
+                    }}
+                  >
+                    {s1PuzzleStatus}
+                  </div>
+                )}
 
-            {s1PuzzleStatus && (
-              <div
-                className={`s1PuzzleStatus ${s1PuzzleStatus === "Anahtar kilidi hatırladı." ? "s1PuzzleStatus--ok" : ""}`}
-                style={{
-                  borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,.18)",
-                  background:
-                    s1PuzzleStatus === "Anahtar kilidi hatırladı." ? "rgba(62,170,106,.26)" : "rgba(255,255,255,.08)",
-                  color: "#eef2fb",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  lineHeight: 1.35,
-                  padding: "10px 12px",
-                }}
-              >
-                {s1PuzzleStatus}
+                <div className="s1PuzzleSubtitle" style={{ color: "#d7e0f5", fontSize: 13, lineHeight: 1.45 }}>
+                  Parçayı seç, sonra slota dokun. Dolu slota tekrar dokunursan parça çıkar.
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}
@@ -1398,6 +1787,7 @@ export function BeachScene({
             aria-label="Nesneyi incele"
             style={{
               width: "min(92vw, 520px)",
+              maxHeight: "min(86vh, 680px)",
               borderRadius: 16,
               border: "1px solid rgba(255,255,255,.22)",
               background: "rgba(10,13,19,.95)",
@@ -1405,82 +1795,114 @@ export function BeachScene({
               padding: "18px 18px 16px",
               display: "grid",
               gap: 12,
+              overflow: "hidden",
             }}
           >
-            <div style={{ fontSize: 13, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.75 }}>
-              {overlayTitle}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "center" }}>
-              <div
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 13, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.75 }}>
+                {overlayTitle}
+              </div>
+              <button
+                type="button"
+                onClick={closeOverlay}
+                disabled={busy}
+                aria-label="Kapat"
                 style={{
-                  width: 92,
-                  height: 92,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,.2)",
-                  background: "rgba(0,0,0,.28)",
-                  display: "grid",
-                  placeItems: "center",
+                  width: 44,
+                  height: 44,
+                  minWidth: 44,
+                  minHeight: 44,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,.24)",
+                  background: "rgba(255,255,255,.08)",
+                  color: "#eef2fb",
+                  fontSize: 20,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  touchAction: "manipulation",
                 }}
               >
-                <img
-                  src={
-                    overlayTarget === "hatch"
-                      ? HATCH_STEP.hotspots[0].obj
-                      : (selectedHotspot?.obj ?? activeSceneHotspots[0]?.obj ?? HATCH_STEP.hotspots[0].obj)
-                  }
-                  alt=""
-                  draggable={false}
-                  style={{ width: "80%", height: "80%", objectFit: "contain" }}
-                />
-              </div>
-
-              {isS1NotePanel ? (
-                <div style={{ color: "#eef2fb", fontSize: 14, lineHeight: 1.4, display: "grid", gap: 10 }}>
-                  <div>{overlayDescription}</div>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div
-                      aria-hidden
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        minHeight: 18,
-                      }}
-                    >
-                      <span style={{ width: 34, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
-                      <span style={{ width: 20, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
-                      <span style={{ width: 28, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
-                      <span style={{ width: 20, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
-                      <span style={{ width: 34, height: 4, borderRadius: 999, background: "#d7e0f5" }} />
-                    </div>
-                    <div style={{ fontSize: 12, opacity: 0.82 }}>uzun-kısa-orta-kısa-uzun</div>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ color: "#eef2fb", fontSize: 14, lineHeight: 1.4 }}>{overlayDescription}</div>
-              )}
+                ×
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={closeOverlay}
-              disabled={busy}
-              style={{
-                width: "100%",
-                minHeight: 46,
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,.24)",
-                background: overlayTarget === "hatch" ? "rgba(255,58,58,.22)" : "rgba(255,255,255,.08)",
-                color: "#eef2fb",
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-                touchAction: "manipulation",
-              }}
-            >
-              {overlayButtonLabel}
-            </button>
+            {isS1NotePanel ? (
+              <div
+                className="b0NotePaper"
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(231,238,250,.24)",
+                  background: "rgba(17,24,34,.86)",
+                  padding: "14px 14px 16px",
+                  display: "grid",
+                  gap: 10,
+                  color: "#eff4ff",
+                  fontSize: "clamp(15px, 3.9vw, 18px)",
+                  lineHeight: 1.6,
+                  overflowY: "auto",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {B0_NOTE_LINES.map((line, index) =>
+                  line ? (
+                    <p key={`note-line-${index}`} style={{ margin: 0 }}>
+                      {line}
+                    </p>
+                  ) : (
+                    <div key={`note-gap-${index}`} style={{ height: 12 }} />
+                  )
+                )}
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "center" }}>
+                  <div
+                    style={{
+                      width: 92,
+                      height: 92,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,.2)",
+                      background: "rgba(0,0,0,.28)",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    <img
+                      src={
+                        overlayTarget === "hatch"
+                          ? HATCH_STEP.hotspots[0].obj
+                          : (selectedHotspot?.obj ?? activeSceneHotspots[0]?.obj ?? HATCH_STEP.hotspots[0].obj)
+                      }
+                      alt=""
+                      draggable={false}
+                      style={{ width: "80%", height: "80%", objectFit: "contain" }}
+                    />
+                  </div>
+
+                  <div style={{ color: "#eef2fb", fontSize: 14, lineHeight: 1.4 }}>{overlayDescription}</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeOverlay}
+                  disabled={busy}
+                  style={{
+                    width: "100%",
+                    minHeight: 46,
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,.24)",
+                    background: overlayTarget === "hatch" ? "rgba(255,58,58,.22)" : "rgba(255,255,255,.08)",
+                    color: "#eef2fb",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    touchAction: "manipulation",
+                  }}
+                >
+                  {overlayButtonLabel}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

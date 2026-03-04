@@ -110,6 +110,32 @@ body,
   cursor:default !important;
 }
 
+.fogOverlay{
+  position:fixed;
+  inset:0;
+  z-index:40;
+  pointer-events:none;
+}
+
+.fogBase{
+  background:
+    radial-gradient(circle at 50% 70%, rgba(223,232,246,.64) 0%, rgba(190,206,228,.4) 34%, rgba(148,171,201,.22) 62%, rgba(124,148,180,0) 100%),
+    radial-gradient(ellipse at 50% 84%, rgba(196,214,236,.28) 0%, rgba(176,196,224,.14) 44%, rgba(146,170,200,0) 100%);
+}
+
+.groundFog{
+  background:
+    linear-gradient(
+      to top,
+      rgba(214,226,242,.72) 0%,
+      rgba(198,214,236,.54) 17%,
+      rgba(176,194,220,.34) 36%,
+      rgba(154,176,206,.18) 48%,
+      rgba(130,154,184,0) 55%
+    );
+  filter:blur(7px);
+}
+
 .s1PuzzleOverlay{
   background:
     radial-gradient(ellipse at center, rgba(0,0,0,.18) 0%, rgba(0,0,0,.78) 100%);
@@ -117,40 +143,50 @@ body,
 
 .s1PuzzlePanel{
   position:relative;
-  overflow:hidden;
+  overflow:visible;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+
+.s1PuzzleTabletFrame{
+  position:relative;
+  width:min(95vw, 680px);
+  border-radius:28px;
+  padding:20px;
   background:
-    linear-gradient(180deg, rgba(17,22,30,.98) 0%, rgba(8,11,16,.97) 100%) !important;
-  border:1px solid rgba(208,220,255,.2) !important;
+    linear-gradient(160deg, rgba(20,26,38,.96) 0%, rgba(8,12,19,.98) 58%, rgba(5,8,13,.98) 100%);
+  border:1px solid rgba(229,238,255,.22);
   box-shadow:
     0 28px 70px rgba(0,0,0,.58),
-    inset 0 1px 0 rgba(255,255,255,.08) !important;
+    inset 0 1px 0 rgba(255,255,255,.14),
+    inset 0 -10px 24px rgba(0,0,0,.34);
 }
 
-.s1PuzzlePanel::before{
-  content:"";
+.s1PuzzleTabletBezel{
   position:absolute;
-  inset:0;
+  left:50%;
+  top:10px;
+  transform:translateX(-50%);
+  width:78px;
+  height:6px;
+  border-radius:999px;
+  background:rgba(198,213,240,.24);
+  box-shadow:0 0 0 1px rgba(255,255,255,.1), inset 0 1px 2px rgba(0,0,0,.38);
   pointer-events:none;
-  opacity:.2;
+}
+
+.s1PuzzleTabletScreen{
+  border-radius:20px;
+  padding:16px;
+  display:grid;
+  gap:12px;
   background:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(255,255,255,.05) 0 1px,
-      rgba(0,0,0,0) 1px 3px
-    );
-}
-
-.s1PuzzlePanel::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background:radial-gradient(circle at 50% 40%, rgba(255,255,255,.08), rgba(0,0,0,.45) 78%);
-}
-
-.s1PuzzlePanel > *{
-  position:relative;
-  z-index:1;
+    linear-gradient(180deg, rgba(18,26,38,.96) 0%, rgba(10,14,22,.96) 100%);
+  border:1px solid rgba(188,210,245,.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.1),
+    inset 0 -8px 18px rgba(0,0,0,.28);
 }
 
 .s1PuzzlePanel--shake{
@@ -158,9 +194,10 @@ body,
 }
 
 .s1PuzzleTitle{
-  font-size:clamp(20px, 4.6vw, 28px) !important;
-  letter-spacing:.06em !important;
-  text-transform:uppercase;
+  font-size:clamp(18px, 4.5vw, 24px) !important;
+  letter-spacing:.04em !important;
+  text-transform:none;
+  text-align:center;
 }
 
 .s1PuzzleSubtitle,
@@ -168,11 +205,18 @@ body,
   color:rgba(224,232,248,.9) !important;
 }
 
+.s1PuzzleSubtitle{
+  text-align:center;
+  font-size:13px;
+}
+
 .s1PuzzleLabel{
   letter-spacing:.12em !important;
+  text-align:center;
 }
 
 .s1PuzzleSlot{
+  min-height:44px;
   border:1px solid rgba(209,220,248,.34) !important;
   background:
     linear-gradient(180deg, rgba(184,198,226,.12), rgba(66,76,94,.22)),
@@ -196,6 +240,7 @@ body,
 }
 
 .s1PuzzlePiece{
+  min-height:44px;
   border:1px solid rgba(210,223,250,.35) !important;
   background:
     linear-gradient(180deg, rgba(156,168,196,.16), rgba(66,75,93,.22)),
@@ -210,7 +255,8 @@ body,
 .s1PuzzlePiece--selected{
   border-color:rgba(151,205,255,.86) !important;
   box-shadow:
-    0 0 0 1px rgba(151,205,255,.28),
+    0 0 0 1px rgba(151,205,255,.38),
+    0 0 14px rgba(110,184,255,.34),
     inset 0 1px 2px rgba(255,255,255,.2);
 }
 
@@ -218,7 +264,12 @@ body,
   opacity:.58 !important;
 }
 
+.s1PuzzleFooter{
+  flex-wrap:wrap;
+}
+
 .s1PuzzleResetBtn{
+  min-height:44px;
   background:rgba(255,255,255,.1) !important;
 }
 
@@ -229,6 +280,28 @@ body,
 .s1PuzzleStatus--ok{
   border-color:rgba(118,220,162,.45) !important;
   background:rgba(42,132,86,.34) !important;
+}
+
+.b0NotePaper{
+  max-height:min(62vh, 420px);
+}
+
+@media (max-width:560px){
+  .s1PuzzleTabletFrame{
+    border-radius:24px;
+    padding:14px;
+  }
+
+  .s1PuzzleTabletScreen{
+    border-radius:16px;
+    padding:12px;
+    gap:10px;
+  }
+
+  .s1PuzzleSlots,
+  .s1PuzzlePieces{
+    gap:6px !important;
+  }
 }
 
 @keyframes s1PuzzlePop{

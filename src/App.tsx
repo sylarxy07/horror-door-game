@@ -96,6 +96,7 @@ export default function App() {
   const [lastOutcome, setLastOutcome] = useState<DoorOutcome | null>(null);
   const [doorHitPulseKey, setDoorHitPulseKey] = useState(0);
   const [doorEventOverlay, setDoorEventOverlay] = useState<DoorEventOverlay>(null);
+  const [showHotspots, setShowHotspots] = useState(false);
 
   const timeoutRefs = useRef<number[]>([]);
   const touchYRef = useRef<number | null>(null);
@@ -1284,6 +1285,7 @@ export default function App() {
           doorHint={doorHint}
           lastOutcome={lastOutcome}
           levelConfig={getLevelConfig(level)}
+          showHotspots={showHotspots}
         />
       )}
 
@@ -1348,6 +1350,9 @@ export default function App() {
           </button>
           <button className="btn ghost" type="button" onClick={jumpToDoorGame}>
             {"Kap\u0131lara Atla"}
+          </button>
+          <button className="btn ghost" type="button" onClick={() => setShowHotspots((prev) => !prev)}>
+            {`KP Debug: ${showHotspots ? "A\u00e7\u0131k" : "Kapal\u0131"}`}
           </button>
         </div>
       )}
