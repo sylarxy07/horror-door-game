@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { usePreferredAssetPath } from "../game/usePreferredAssetPath";
+import { useI18n } from "../i18n";
 
 type TunnelSceneProps = {
   worldShakeClass: string;
@@ -10,8 +11,8 @@ type TunnelSceneProps = {
 
 type WallWriting = {
   id: string;
-  early: string;
-  late: string;
+  earlyKey: string;
+  lateKey: string;
 };
 
 const PROGRESS_ADVANCE_RATE = 19;
@@ -23,24 +24,24 @@ const TUNNEL_BG_CANDIDATES = [
 ] as const;
 
 const GLITCH_MILESTONES = [
-  { threshold: 20, text: "DENEME" },
-  { threshold: 50, text: "KAPI" },
-  { threshold: 70, text: "HATIRLA" },
-  { threshold: 90, text: "GERİ DÖNME" },
-  { threshold: 95, text: "GERİ DÖNME" },
+  { threshold: 20, key: "tunnel.glitch.try" },
+  { threshold: 50, key: "tunnel.glitch.door" },
+  { threshold: 70, key: "tunnel.glitch.remember" },
+  { threshold: 90, key: "tunnel.glitch.noreturn" },
+  { threshold: 95, key: "tunnel.glitch.noreturn" },
 ] as const;
 
 const WALL_WRITINGS: WallWriting[] = [
-  { id: "w1", early: "KAYIT 03 // D?NEME BASLADI", late: "KAYIT 03 // DENEME BASLADI" },
-  { id: "w2", early: "SISTEM: DE#EME 08 tekrar", late: "SISTEM: DENEME 08 tekrar" },
-  { id: "w3", early: "D E N _ M E : CIKIS red", late: "DENEME: CIKIS red" },
-  { id: "w4", early: "DONGU SAYACI artis", late: "DONGU SAYACI artiyor" },
-  { id: "w5", early: "KAYIT KATMANI ustune KATMAN", late: "KAYIT KATMANI ustune katman" },
-  { id: "w6", early: "TEKRAR edilen ses disari siz?", late: "TEKRAR edilen ses disari siziyor" },
-  { id: "w7", early: "SISTEM geri cagirir", late: "SISTEM geri cagirir" },
-  { id: "w8", early: "YOL kisaliyor // DUVAR uzuyor", late: "YOL kisaliyor // DUVAR uzuyor" },
-  { id: "w9", early: "KAPI etiketi: CIKI? ?", late: "KAPI etiketi: CIKIS?" },
-  { id: "w10", early: "SON KAYIT: tekrar basladi", late: "SON KAYIT: tekrar basladi" },
+  { id: "w1", earlyKey: "tunnel.wall.1.early", lateKey: "tunnel.wall.1.late" },
+  { id: "w2", earlyKey: "tunnel.wall.2.early", lateKey: "tunnel.wall.2.late" },
+  { id: "w3", earlyKey: "tunnel.wall.3.early", lateKey: "tunnel.wall.3.late" },
+  { id: "w4", earlyKey: "tunnel.wall.4.early", lateKey: "tunnel.wall.4.late" },
+  { id: "w5", earlyKey: "tunnel.wall.5.early", lateKey: "tunnel.wall.5.late" },
+  { id: "w6", earlyKey: "tunnel.wall.6.early", lateKey: "tunnel.wall.6.late" },
+  { id: "w7", earlyKey: "tunnel.wall.7.early", lateKey: "tunnel.wall.7.late" },
+  { id: "w8", earlyKey: "tunnel.wall.8.early", lateKey: "tunnel.wall.8.late" },
+  { id: "w9", earlyKey: "tunnel.wall.9.early", lateKey: "tunnel.wall.9.late" },
+  { id: "w10", earlyKey: "tunnel.wall.10.early", lateKey: "tunnel.wall.10.late" },
 ];
 
 const SCRAMBLE_CHARS = ["#", "?", "_", "%", "/", "*"];
@@ -77,6 +78,7 @@ export function TunnelScene({
   devToolsEnabled = false,
   onSkipToDoorGame,
 }: TunnelSceneProps) {
+  const { t } = useI18n();
   const tunnelBgPath = usePreferredAssetPath(TUNNEL_BG_CANDIDATES);
   const [progress, setProgress] = useState(0);
   const [isAdvancing, setIsAdvancing] = useState(false);
@@ -184,7 +186,7 @@ export function TunnelScene({
     GLITCH_MILESTONES.forEach((milestone, index) => {
       if (progress >= milestone.threshold && !shownMilestonesRef.current.has(index)) {
         shownMilestonesRef.current.add(index);
-        nextMilestoneWord = milestone.text;
+        nextMilestoneWord = t(milestone.key);
       }
     });
 
@@ -205,7 +207,7 @@ export function TunnelScene({
     glitchImpactTimerRef.current = window.setTimeout(() => {
       setGlitchImpactActive(false);
     }, 220);
-  }, [progress]);
+  }, [progress, t]);
 
   useEffect(() => {
     if (progress < 90 || doorRevealTriggeredRef.current) return;
@@ -301,7 +303,7 @@ export function TunnelScene({
 
   const renderedWritings = useMemo(() => {
     return WALL_WRITINGS.slice(0, visibleLineCount).map((line, index) => {
-      const baseText = progress < 45 ? line.early : line.late;
+      const baseText = progress < 45 ? t(line.earlyKey) : t(line.lateKey);
       const scrambleAmount = progress >= 80 ? 0.34 : progress >= 50 ? 0.2 : 0;
       const text = scrambleText(baseText, scrambleAmount, glitchTick * 17 + index * 19);
 
@@ -314,20 +316,20 @@ export function TunnelScene({
         text,
       };
     });
-  }, [glitchTick, progress, visibleLineCount]);
+  }, [glitchTick, progress, t, visibleLineCount]);
 
   const roundedProgress = Math.round(progress);
   const canRevealDoor = progress >= 90;
   const canContinue = progress >= 95;
 
   const hintText = useMemo(() => {
-    if (progress < 20) return "Koridor sessiz degil. Adimlar duvara geri donuyor.";
-    if (progress < 50) return "Yazilar aciliyor, ama satirlar tamamlanmiyor.";
-    if (progress < 70) return "Sinyal karisiyor. Kayit katmanlari ust uste biniyor.";
-    if (progress < 90) return "Bir kelime netlesiyor, sonra tekrar bozuluyor.";
-    if (progress < 95) return "Uzakta bir cikis sekli var. Hala kararsiz.";
-    return "Gecis acik. Devam etmek icin onay ver.";
-  }, [progress]);
+    if (progress < 20) return t("tunnel.hint.1");
+    if (progress < 50) return t("tunnel.hint.2");
+    if (progress < 70) return t("tunnel.hint.3");
+    if (progress < 90) return t("tunnel.hint.4");
+    if (progress < 95) return t("tunnel.hint.5");
+    return t("tunnel.hint.6");
+  }, [progress, t]);
 
   const tunnelScreenStyle = tunnelBgPath
     ? {
@@ -342,11 +344,11 @@ export function TunnelScene({
     <div className="screen tunnelScreen" style={tunnelScreenStyle}>
       <header className="panel hud tunnelHud">
         <div>
-          <div className="hudSub">Gecis</div>
-          <div className="hudTitle">Servis Tuneli</div>
+          <div className="hudSub">{t("tunnel.hudSub")}</div>
+          <div className="hudTitle">{t("tunnel.hudTitle")}</div>
         </div>
         <div className="tunnelProgressHud" aria-live="polite">
-          <div className="tunnelProgressLabel">Ilerleme %{roundedProgress}</div>
+          <div className="tunnelProgressLabel">{t("tunnel.progress", { percent: roundedProgress })}</div>
           <div className="tunnelProgressTrack" role="presentation">
             <div className="tunnelProgressFill" style={{ width: `${progress}%` }} />
           </div>
@@ -358,12 +360,12 @@ export function TunnelScene({
             onClick={onSkipToDoorGame}
             style={{ minWidth: 116, padding: "8px 12px" }}
           >
-            Kapilara Atla
+            {t("tunnel.skipDoors")}
           </button>
         )}
       </header>
 
-      <main className={`world ${worldShakeClass} tunnelWorld tunnelWorld--${glitchClass}`} aria-label="Tunel">
+      <main className={`world ${worldShakeClass} tunnelWorld tunnelWorld--${glitchClass}`} aria-label={t("tunnel.worldAria")}>
         <div className="worldSurface">
           <div className="tunnelBg" />
           <div className="tunnelVignette" />
@@ -399,7 +401,7 @@ export function TunnelScene({
               disabled={!canContinue}
             >
               <div className="pill" style={{ background: "rgba(8,11,16,.45)" }}>
-                CIKIS?
+                {t("tunnel.exit")}
               </div>
             </button>
 
@@ -422,20 +424,20 @@ export function TunnelScene({
             <button
               className={`tunnelAdvanceBtn ${isAdvancing ? "active" : ""}`}
               type="button"
-              aria-label="İLERLE basılı tut"
+              aria-label={t("tunnel.advanceHoldAria")}
               onPointerDown={handleAdvanceStart}
               onPointerUp={handleAdvanceEnd}
               onPointerCancel={handleAdvanceEnd}
               onPointerLeave={handleAdvanceEnd}
             >
-              İLERLE (BASILI TUT)
+              {t("tunnel.advanceHold")}
             </button>
           </div>
 
           {canContinue && (
             <div className="tunnelContinueWrap">
               <button className="btn danger tunnelContinueBtn" type="button" onClick={onEnterDoorGame}>
-                DEVAM
+                {t("common.continue")}
               </button>
             </div>
           )}
@@ -443,7 +445,7 @@ export function TunnelScene({
       </main>
 
       <footer className="panel hint">
-        <div className="hintLabel">Ic Ses</div>
+        <div className="hintLabel">{t("tunnel.hintLabel")}</div>
         <div className="hintText">{hintText}</div>
       </footer>
     </div>

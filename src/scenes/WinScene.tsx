@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../i18n";
 
 type WinSceneProps = {
   maxLevel: number;
@@ -10,6 +11,7 @@ type WinSceneProps = {
 type EndingPhase = "ELEVATOR" | "GIRL" | "CARD";
 
 export function WinScene({ maxLevel, lives, onStartNewRun, onRetryToMenu }: WinSceneProps) {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<EndingPhase>("ELEVATOR");
 
   useEffect(() => {
@@ -28,25 +30,25 @@ export function WinScene({ maxLevel, lives, onStartNewRun, onRetryToMenu }: WinS
         <div className="episodeEndBlack" />
         <div className="centerCard panel episodeEndCard">
           <h2 className="title" style={{ margin: 0 }}>
-            {"B\u00f6l\u00fcm 1 Bitti"}
+            {t("win.cardTitle")}
           </h2>
-          <div className="sub">{"Sistem tamamlanmad\u0131. Deneme 01 kaydedildi."}</div>
+          <div className="sub">{t("win.cardSub")}</div>
           <div className="stats">
             <div className="stat">
-              <div className="k">Tamamlanan Kat</div>
+              <div className="k">{t("win.completedFloor")}</div>
               <div className="v">{maxLevel}</div>
             </div>
             <div className="stat">
-              <div className="k">Kalan Can</div>
+              <div className="k">{t("win.remainingLives")}</div>
               <div className="v">{lives}</div>
             </div>
           </div>
           <div style={{ display: "grid", gap: 8 }}>
             <button className="btn wide" onClick={onRetryToMenu} type="button">
-              {"Ana Men\u00fc"}
+              {t("win.backToMenu")}
             </button>
             <button className="btn danger wide" onClick={onStartNewRun} type="button">
-              {"B\u00f6l\u00fcm 1'i Tekrarla"}
+              {t("win.retryEpisode")}
             </button>
           </div>
         </div>
@@ -58,8 +60,8 @@ export function WinScene({ maxLevel, lives, onStartNewRun, onRetryToMenu }: WinS
     <div className="episodeEndWrap">
       <div className="episodeEndBg" />
       <div className="centerCard panel episodeEndStage">
-        <div className="hudSub">{"Asans\u00f6r Hatt\u0131"}</div>
-        <div className="hudTitle">{"Kap\u0131 a\u00e7\u0131ld\u0131. Koridor devam ediyor."}</div>
+        <div className="hudSub">{t("win.elevatorLine")}</div>
+        <div className="hudTitle">{t("win.elevatorTitle")}</div>
 
         <div className="episodeElevatorFrame" aria-hidden="true">
           <div className="episodeElevatorDoor episodeElevatorDoor--left" />
@@ -74,7 +76,7 @@ export function WinScene({ maxLevel, lives, onStartNewRun, onRetryToMenu }: WinS
         </div>
 
         <div className="hintText">
-          {phase === "GIRL" ? "Bu sefer daha uzun s\u00fcrd\u00fc." : "Tamay k\u0131sa bir sessizlik duyuyor."}
+          {phase === "GIRL" ? t("win.hintGirl") : t("win.hintSilent")}
         </div>
       </div>
     </div>

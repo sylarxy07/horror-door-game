@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n";
+
 type GameOverSceneProps = {
   level: number;
   checkpointUnlocked: boolean;
@@ -13,34 +15,39 @@ export function GameOverScene({
   onRetryFromCheckpoint,
   onRetryToMenu,
 }: GameOverSceneProps) {
+  const { t } = useI18n();
   return (
     <div className="centerWrap">
       <div className="bgBasic" />
       <div className="centerCard panel">
         <h2 className="title" style={{ margin: 0 }}>
-          {"Deneme Sonland\u0131"}
+          {t("gameover.title")}
         </h2>
         <div className="sub">
-          {"Tamay kap\u0131 d\u00fczenini \u00e7\u00f6zemedi. Sis geri \u00e7ekilmiyor. I\u015f\u0131k h\u00e2l\u00e2 \u00e7a\u011f\u0131r\u0131yor."}
+          {t("gameover.body")}
         </div>
         <div className="stats">
           <div className="stat">
-            <div className="k">{"Ula\u015f\u0131lan Kat"}</div>
+            <div className="k">{t("gameover.reachedFloor")}</div>
             <div className="v">{level}</div>
           </div>
           <div className="stat">
-            <div className="k">Checkpoint</div>
-            <div className="v">{checkpointUnlocked ? `Kat ${checkpointLevel}` : "Yok"}</div>
+            <div className="k">{t("gameover.checkpoint")}</div>
+            <div className="v">
+              {checkpointUnlocked
+                ? t("gameover.checkpointFloor", { level: checkpointLevel })
+                : t("gameover.none")}
+            </div>
           </div>
         </div>
         <div style={{ display: "grid", gap: 8 }}>
           {checkpointUnlocked && (
             <button className="btn danger wide" onClick={onRetryFromCheckpoint} type="button">
-              Checkpointten Devam Et
+              {t("gameover.resumeCheckpoint")}
             </button>
           )}
           <button className="btn wide" onClick={onRetryToMenu} type="button">
-            {"Ana Men\u00fcye D\u00f6n"}
+            {t("gameover.backToMenu")}
           </button>
         </div>
       </div>

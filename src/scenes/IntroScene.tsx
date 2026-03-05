@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../i18n";
 
 type IntroSceneProps = {
   worldShakeClass: string;
@@ -13,17 +14,12 @@ const introSlideImageCandidates = [
   ["/images/scenes/prologue_s2_screen_glitch.png", "/image/scence/prologue_s2_screen_glitch.png"],
   ["/images/scenes/prologue_s3_redeyes.png", "/image/scence/prologue_s3_redeyes.png"],
 ];
-const introInterludeText =
-  "Ekrandaki deh\u015fet verici g\u00f6zlerin etkisiyle bay\u0131lan Tamay,\n" +
-  "\u0131ss\u0131z bir kumsalda uyan\u0131r.\n\n" +
-  "Kendine geldikten sonra i\u00e7ini tuhaf ama tan\u0131d\u0131k bir his kaplar ve der ki:\n\n" +
-  "\u2018Buraya nas\u0131l geldim?\nNeresi buras\u0131?\n\u0130lk kez mi geliyorum\u2026 yoksa tekrar m\u0131?\u2019";
 const introBaseStepMs = 1700;
 const introCharMs = 48;
 const introMinStepMs = 5400;
 const introMaxStepMs = 9800;
 const introInterludeFadeMs = 400;
-const introInterludeReadMs = 7000;
+const introInterludeReadMs = 9500;
 const introMusicPeakGain = 0.022;
 const introMusicFadeInSec = 2.2;
 const introMusicFadeOutSec = 0.85;
@@ -44,6 +40,7 @@ const parsePrologueCmd = (raw: string) =>
     .filter((line) => line.length > 0 && !/^(::|#|REM\s)/i.test(line));
 
 export function IntroScene(props: IntroSceneProps) {
+  const { currentLang, t } = useI18n();
   const { worldShakeClass, introStep, introLines, onAdvance } = props;
   const [cmdLines, setCmdLines] = useState<string[] | null>(null);
   const [imageCandidateByStep, setImageCandidateByStep] = useState<Record<number, number>>({});
@@ -102,9 +99,9 @@ export function IntroScene(props: IntroSceneProps) {
   const sceneCount = introSlideImageCandidates.length;
   const step = Math.min(introStep, sceneCount - 1);
   const resolvedLines = useMemo(() => {
-    const preferred = cmdLines && cmdLines.length ? cmdLines : introLines;
+    const preferred = currentLang === "tr" && cmdLines && cmdLines.length ? cmdLines : introLines;
     return introSlideImageCandidates.map((_, idx) => preferred[idx] ?? introLines[idx] ?? "");
-  }, [cmdLines, introLines]);
+  }, [cmdLines, currentLang, introLines]);
 
   const isLastStep = step >= sceneCount - 1;
   const candidateIndex = imageCandidateByStep[step] ?? 0;
@@ -122,7 +119,7 @@ export function IntroScene(props: IntroSceneProps) {
     if (displayedSrc === activeImageSrc) return;
 
     if (!displayedSrc) {
-      // First image â€” show immediately, no bridge needed.
+      // First image: show immediately, no bridge needed.
       setDisplayedSrc(activeImageSrc);
       setSceneToken((t) => t + 1);
       return;
@@ -136,7 +133,7 @@ export function IntroScene(props: IntroSceneProps) {
   const handleBridgeTransitionEnd = useCallback(() => {
     setBridgePhase((phase) => {
       if (phase === "darkening") {
-        // Peak reached â€” swap image and reveal immediately (no hold).
+        // Peak reached: swap image and reveal immediately (no hold).
         const next = pendingSrcRef.current;
         if (next) {
           setDisplayedSrc(next);
@@ -384,7 +381,7 @@ export function IntroScene(props: IntroSceneProps) {
                 key={`intro-scene-${sceneToken}`}
                 className="introSceneImage introSceneImageCurrent"
                 src={displayedSrc}
-                alt={`GiriÅŸ sahnesi ${step + 1}`}
+                alt={t("intro.sceneAlt", { index: step + 1 })}
                 loading="eager"
                 onError={() => {
                   setImageCandidateByStep((prev) => {
@@ -442,7 +439,7 @@ export function IntroScene(props: IntroSceneProps) {
                   maxWidth: "min(940px, 92vw)",
                 }}
               >
-                {introInterludeText}
+                {t("intro.interlude")}
               </p>
             </div>
           )}

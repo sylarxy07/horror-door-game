@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useI18n } from "../i18n";
 
 type MenuSceneProps = {
   onStart: () => void;
@@ -7,6 +8,7 @@ type MenuSceneProps = {
 type SettingsTab = "VIDEO" | "AUDIO" | "LANG";
 
 export function MenuScene({ onStart }: MenuSceneProps) {
+  const { currentLang, setLang, t } = useI18n();
   const [panel, setPanel] = useState<"MAIN" | "SETTINGS">("MAIN");
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("VIDEO");
   const [mounted, setMounted] = useState(false);
@@ -18,7 +20,6 @@ export function MenuScene({ onStart }: MenuSceneProps) {
   const [ambienceVolume, setAmbienceVolume] = useState(80);
   const [sfxVolume, setSfxVolume] = useState(80);
 
-  const [language, setLanguage] = useState<"tr" | "en">("tr");
   const [subtitlesOn, setSubtitlesOn] = useState(true);
 
   useEffect(() => {
@@ -27,9 +28,9 @@ export function MenuScene({ onStart }: MenuSceneProps) {
   }, []);
 
   const menuItems = [
-    { label: "Yeni Oyun", id: "new-game", action: onStart, variant: "primary" },
-    { label: "Devam", id: "continue", action: null, variant: "ghost", disabled: true },
-    { label: "Ayarlar", id: "settings", action: () => setPanel("SETTINGS"), variant: "ghost" },
+    { label: t("menu.newGame"), id: "new-game", action: onStart, variant: "primary" },
+    { label: t("menu.continue"), id: "continue", action: null, variant: "ghost", disabled: true },
+    { label: t("menu.settings"), id: "settings", action: () => setPanel("SETTINGS"), variant: "ghost" },
   ];
 
   const renderMainPanel = () => (
@@ -53,12 +54,35 @@ export function MenuScene({ onStart }: MenuSceneProps) {
       {/* Noise overlay */}
       <div className="menuNoise" />
 
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 8 }}>
+        <select
+          aria-label={t("menu.languageLabel")}
+          value={currentLang}
+          onChange={(e) => setLang(e.target.value as typeof currentLang)}
+          style={{
+            minHeight: 36,
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,.24)",
+            background: "rgba(8,12,18,.84)",
+            color: "#eef2fb",
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "6px 10px",
+          }}
+        >
+          <option value="tr">{t("menu.lang.tr")}</option>
+          <option value="en">{t("menu.lang.en")}</option>
+          <option value="de">{t("menu.lang.de")}</option>
+          <option value="ru">{t("menu.lang.ru")}</option>
+        </select>
+      </div>
+
       {/* Gradient overlay: ust ve alt icerik alanlarini okunakli kilar */}
       <div className="menuMobileOverlay" />
 
       {/* Top: Logo */}
       <div className="menuMobileTop">
-        <div className="menuLogoEyebrow">{"\u2014 KA\u00c7I\u015e YOK \u2014"}</div>
+        <div className="menuLogoEyebrow">{t("menu.logoEyebrow")}</div>
         <h1 className="menuLogo">
           <span className="menuLogoLine1">NOSCAPE</span>
         </h1>
@@ -67,12 +91,12 @@ export function MenuScene({ onStart }: MenuSceneProps) {
           <span className="menuLogoDividerDot" />
           <span className="menuLogoDividerLine" />
         </div>
-        <p className="menuTagline">The Doors Never Forget</p>
+        <p className="menuTagline">{t("menu.tagline")}</p>
       </div>
 
       {/* Bottom: Nav buttons + Footer */}
       <div className="menuMobileBottom">
-        <nav className="menuNav" aria-label={"Ana men\u00fc"}>
+        <nav className="menuNav" aria-label={t("menu.mainNavAria")}>
           {menuItems.map((item, i) => (
             <button
               key={item.id}
@@ -113,21 +137,21 @@ export function MenuScene({ onStart }: MenuSceneProps) {
           onClick={() => setPanel("MAIN")}
         >
           <span className="settingsBackArrow">{"\u2190"}</span>
-          <span>{"Ana Men\u00fc"}</span>
+          <span>{t("menu.settingsBack")}</span>
         </button>
         <div className="settingsTitle">
-          <span className="settingsTitleAccent">{"\u2014"}</span> AYARLAR{" "}
+          <span className="settingsTitleAccent">{"\u2014"}</span> {t("menu.settingsTitle")}{" "}
           <span className="settingsTitleAccent">{"\u2014"}</span>
         </div>
       </div>
 
       {/* Tab bar */}
-      <div className="settingsTabBar" role="tablist" aria-label="Ayarlar sekmeleri">
+      <div className="settingsTabBar" role="tablist" aria-label={t("menu.settingsTabs")}>
         {(["VIDEO", "AUDIO", "LANG"] as SettingsTab[]).map((tab) => {
           const labels: Record<SettingsTab, string> = {
-            VIDEO: "G\u00f6r\u00fcnt\u00fc",
-            AUDIO: "Ses",
-            LANG: "Dil",
+            VIDEO: t("menu.tab.video"),
+            AUDIO: t("menu.tab.audio"),
+            LANG: t("menu.tab.lang"),
           };
           const icons: Record<SettingsTab, string> = {
             VIDEO: "\u25c8",
@@ -156,7 +180,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
           <div className="settingsGroup">
             <div className="settingsRow">
               <label className="settingsRowLabel" htmlFor="video-quality">
-                {"G\u00f6r\u00fcnt\u00fc Kalitesi"}
+                {t("menu.videoQuality")}
               </label>
               <select
                 id="video-quality"
@@ -164,16 +188,16 @@ export function MenuScene({ onStart }: MenuSceneProps) {
                 value={videoQuality}
                 onChange={(e) => setVideoQuality(e.target.value as "LOW" | "MEDIUM" | "HIGH")}
               >
-                <option value="LOW">{"D\u00fc\u015f\u00fck"}</option>
-                <option value="MEDIUM">Orta</option>
-                <option value="HIGH">{"Y\u00fcksek"}</option>
+                <option value="LOW">{t("menu.quality.low")}</option>
+                <option value="MEDIUM">{t("menu.quality.medium")}</option>
+                <option value="HIGH">{t("menu.quality.high")}</option>
               </select>
             </div>
 
             <div className="settingsRow settingsRow--slider">
               <div className="settingsRowTop">
                 <label className="settingsRowLabel" htmlFor="brightness-slider">
-                  Parlakl\u0131k
+                  {t("menu.brightness")}
                 </label>
                 <span className="settingsRowValue">{brightness}</span>
               </div>
@@ -196,9 +220,9 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         {settingsTab === "AUDIO" && (
           <div className="settingsGroup">
             {[
-              { id: "master-vol", label: "Genel Ses", value: masterVolume, set: setMasterVolume },
-              { id: "ambience-vol", label: "Ortam (Ambience)", value: ambienceVolume, set: setAmbienceVolume },
-              { id: "sfx-vol", label: "Efektler (SFX)", value: sfxVolume, set: setSfxVolume },
+              { id: "master-vol", label: t("menu.masterVolume"), value: masterVolume, set: setMasterVolume },
+              { id: "ambience-vol", label: t("menu.ambienceVolume"), value: ambienceVolume, set: setAmbienceVolume },
+              { id: "sfx-vol", label: t("menu.sfxVolume"), value: sfxVolume, set: setSfxVolume },
             ].map((s) => (
               <div key={s.id} className="settingsRow settingsRow--slider">
                 <div className="settingsRowTop">
@@ -228,16 +252,18 @@ export function MenuScene({ onStart }: MenuSceneProps) {
           <div className="settingsGroup">
             <div className="settingsRow">
               <label className="settingsRowLabel" htmlFor="lang-select">
-                Dil / Language
+                {t("menu.languageLabel")}
               </label>
               <select
                 id="lang-select"
                 className="settingsSelect"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as "tr" | "en")}
+                value={currentLang}
+                onChange={(e) => setLang(e.target.value as typeof currentLang)}
               >
-                <option value="tr">{"T\u00fcrk\u00e7e"}</option>
-                <option value="en">English (deneysel)</option>
+                <option value="tr">{t("menu.lang.tr")}</option>
+                <option value="en">{t("menu.lang.en")}</option>
+                <option value="de">{t("menu.lang.de")}</option>
+                <option value="ru">{t("menu.lang.ru")}</option>
               </select>
             </div>
 
@@ -251,7 +277,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
                   onChange={(e) => setSubtitlesOn(e.target.checked)}
                 />
                 <span className="settingsCheckMark" />
-                <span className="settingsRowLabel">{"Altyaz\u0131lar\u0131 g\u00f6ster"}</span>
+                <span className="settingsRowLabel">{t("menu.subtitles")}</span>
               </label>
             </div>
           </div>

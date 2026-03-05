@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { LevelConfig } from "../game/types";
+import { useI18n } from "../i18n";
 
 type DoorEventOverlay = {
   key: number;
@@ -31,7 +32,6 @@ type DoorGameSceneProps = {
 };
 
 const DOOR_BG_IMAGE = "/assets/img/door/door_corridor.png";
-const CORRIDOR_LABEL = "B\u00d6LGE: KOR\u0130DOR";
 const DOOR_OPEN_ANIM_MS = 620;
 
 type DoorHotspotConfig = {
@@ -329,6 +329,7 @@ export function DoorGameScene({
   levelConfig,
   showHotspots,
 }: DoorGameSceneProps) {
+  const { t } = useI18n();
   const [hoveredDoorIndex, setHoveredDoorIndex] = useState<number | null>(null);
   const [pressedDoorIndex, setPressedDoorIndex] = useState<number | null>(null);
   const [openingDoorIndex, setOpeningDoorIndex] = useState<number | null>(null);
@@ -336,6 +337,10 @@ export function DoorGameScene({
   const openAnimTimeoutRef = useRef<number | null>(null);
 
   const { effects, colors, theme, systemMessage } = levelConfig;
+  const systemMessageKey = `door.systemMessage.${level}`;
+  const translatedSystemMessage = t(systemMessageKey);
+  const resolvedSystemMessage =
+    translatedSystemMessage === systemMessageKey ? systemMessage : translatedSystemMessage;
 
   const fogStyle = effects.fogDensity !== "none" ? { background: colors.fogColor } : undefined;
 
@@ -375,7 +380,7 @@ export function DoorGameScene({
   };
 
   const isInputBlocked = doorInputLocked || isAnimating;
-  const hintText = isAnimating ? "Kapi aralaniyor..." : doorHint;
+  const hintText = isAnimating ? t("door.openingHint") : doorHint;
 
   useEffect(() => {
     return () => {
@@ -418,9 +423,9 @@ export function DoorGameScene({
 
       <header className="panel hud doorHudCompact">
         <div>
-          <div className="hudSub">{CORRIDOR_LABEL}</div>
+          <div className="hudSub">{t("door.region")}</div>
           <div className="hudTitle">
-            Kat {level} / Oda {room}/{roomsPerFloor}
+            {t("door.floorRoom", { level, room, roomsPerFloor })}
           </div>
         </div>
         <div className="pills">
@@ -428,8 +433,8 @@ export function DoorGameScene({
             {"\u2665".repeat(lives)}
             {"\u2661".repeat(maxLives - lives)}
           </div>
-          {corruptionActive && <div className="pill corruptionPill">Bozulma</div>}
-          {effects.glitchAmount !== "none" && <div className="pill red">\u26a0 ANOMAL\u0130</div>}
+          {corruptionActive && <div className="pill corruptionPill">{t("door.corruption")}</div>}
+          {effects.glitchAmount !== "none" && <div className="pill red">\u26a0 {t("door.anomaly")}</div>}
         </div>
       </header>
 
@@ -445,7 +450,7 @@ export function DoorGameScene({
               <div className={`redAccentLight redAccentLight--${effects.redLightIntensity}`} aria-hidden="true" />
             )}
 
-            <div className="doorHotspotLayer" aria-label="Kapi secim alani">
+            <div className="doorHotspotLayer" aria-label={t("door.selectionArea")}>
               {visibleHotspots.map((hotspot) => {
                 const doorState = getHotspotState(hotspot.doorIndex);
                 const isActive =
@@ -519,21 +524,25 @@ export function DoorGameScene({
             <div className="levelVignette" style={vignetteStyle} aria-hidden="true" />
             <ParticleLayer type={effects.particles} />
             <GlitchOverlay amount={effects.glitchAmount} />
-            <SystemMessageOverlay message={systemMessage} level={level} />
+            <SystemMessageOverlay message={resolvedSystemMessage} level={level} />
           </div>
         </div>
       </main>
 
       <footer className="panel hint doorHintCompact">
-        <div className="hintLabel">Durum</div>
+        <div className="hintLabel">{t("common.status")}</div>
         <div className="hintText">{hintText}</div>
         <div className="muted">
-          1 do\u011fru kap\u0131 \u2022 1 lanet kap\u0131 (-2 can) \u2022 3 yanl\u0131\u015f/yarat\u0131k kap\u0131 (-1 can)
+          {t("door.rules")}
           {lastOutcome && (
             <>
               {" "}
-              \u2022 Son se\u00e7im:{" "}
-              {lastOutcome === "SAFE" ? "\u2714 Do\u011fru" : lastOutcome === "CURSE" ? "\u2620 Lanet" : "\u2716 Yarat\u0131k"}
+              \u2022 {t("door.lastChoice")}{" "}
+              {lastOutcome === "SAFE"
+                ? `\u2714 ${t("door.outcome.safe")}`
+                : lastOutcome === "CURSE"
+                  ? `\u2620 ${t("door.outcome.curse")}`
+                  : `\u2716 ${t("door.outcome.monster")}`}
             </>
           )}
         </div>

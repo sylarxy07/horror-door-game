@@ -2634,3 +2634,59 @@ body{font-family:Inter,system-ui,Arial,sans-serif;color:#eef2fb}
   background:rgba(24,110,50,.12);
   color:rgba(70,190,110,.9);
 }
+
+.glitch{
+  position:relative;
+  display:inline-block;
+}
+.glitch::before,
+.glitch::after{
+  content:attr(data-text);
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:.42;
+  will-change:transform,opacity;
+}
+.glitch::before{
+  color:rgba(116,196,255,.78);
+  animation:noteGlitchA 1.85s steps(1,end) infinite;
+}
+.glitch::after{
+  color:rgba(255,122,172,.72);
+  animation:noteGlitchB 2.3s steps(1,end) infinite;
+}
+@keyframes noteGlitchA{
+  0%,16%,100%{transform:translate3d(0,0,0);opacity:0}
+  17%{transform:translate3d(-0.8px,0,0);opacity:.44}
+  18%{transform:translate3d(0.9px,-0.2px,0);opacity:.26}
+  24%{transform:translate3d(0,0,0);opacity:0}
+  52%{transform:translate3d(-1.2px,0.1px,0);opacity:.4}
+  53%{transform:translate3d(0.7px,-0.2px,0);opacity:.3}
+  59%{transform:translate3d(0,0,0);opacity:0}
+  82%{transform:translate3d(-0.7px,0,0);opacity:.34}
+  84%{transform:translate3d(0,0,0);opacity:0}
+}
+@keyframes noteGlitchB{
+  0%,11%,100%{transform:translate3d(0,0,0);opacity:0}
+  12%{transform:translate3d(0.9px,0,0);opacity:.36}
+  13%{transform:translate3d(-0.8px,0.2px,0);opacity:.24}
+  20%{transform:translate3d(0,0,0);opacity:0}
+  47%{transform:translate3d(1.1px,-0.1px,0);opacity:.38}
+  49%{transform:translate3d(-0.7px,0,0);opacity:.2}
+  55%{transform:translate3d(0,0,0);opacity:0}
+  77%{transform:translate3d(0.8px,0.1px,0);opacity:.28}
+  79%{transform:translate3d(0,0,0);opacity:0}
+}
+@media (max-width:760px){
+  .glitch::before,
+  .glitch::after{
+    opacity:.34;
+  }
+  .glitch::before{
+    animation-duration:2.2s;
+  }
+  .glitch::after{
+    animation-duration:2.45s;
+  }
+}

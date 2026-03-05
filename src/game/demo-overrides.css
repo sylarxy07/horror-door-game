@@ -189,8 +189,8 @@ body,
     inset 0 -8px 18px rgba(0,0,0,.28);
 }
 
-.s1PuzzlePanel--shake{
-  animation:s1PuzzleShake .24s ease;
+.s1PuzzlePanel--glitch .s1PuzzleTabletScreen{
+  animation:s1PuzzleGlitch .2s steps(2,end);
 }
 
 .s1PuzzleTitle{
@@ -252,6 +252,16 @@ body,
     inset 0 -2px 4px rgba(0,0,0,.22);
 }
 
+.s1PuzzlePieceIcon{
+  width:48px;
+  height:48px;
+  display:block;
+  object-fit:contain;
+  pointer-events:none;
+  user-select:none;
+  transition:transform .16s ease, opacity .16s ease, filter .16s ease;
+}
+
 .s1PuzzlePiece--selected{
   border-color:rgba(151,205,255,.86) !important;
   box-shadow:
@@ -262,6 +272,15 @@ body,
 
 .s1PuzzlePiece--placed{
   opacity:.58 !important;
+}
+
+.s1PuzzlePiece--pulse{
+  border-color:rgba(151,205,255,.86) !important;
+  box-shadow:
+    0 0 0 1px rgba(151,205,255,.34),
+    0 0 16px rgba(110,184,255,.36),
+    inset 0 1px 2px rgba(255,255,255,.24);
+  animation:s1PuzzlePop .16s ease-out;
 }
 
 .s1PuzzleFooter{
@@ -304,10 +323,25 @@ body,
   }
 }
 
+@media (max-width:768px){
+  .s1PuzzlePieceIcon{
+    width:56px;
+    height:56px;
+  }
+}
+
 @keyframes s1PuzzlePop{
   0%{transform:scale(.98)}
   65%{transform:scale(1.02)}
   100%{transform:scale(1)}
+}
+
+@keyframes s1PuzzleGlitch{
+  0%{transform:translate(0,0); filter:brightness(1)}
+  25%{transform:translate(-2px,1px); filter:brightness(1.35)}
+  50%{transform:translate(2px,-1px); filter:contrast(1.2)}
+  75%{transform:translate(-1px,0); filter:brightness(1.18)}
+  100%{transform:translate(0,0); filter:brightness(1)}
 }
 
 @keyframes s1PuzzleShake{
