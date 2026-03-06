@@ -9,11 +9,15 @@ type IntroSceneProps = {
   onSkip: () => void;
 };
 
+// ==================== SLIDE DATA ====================
+// Single source of truth: each slide has image candidates, text key, and duration.
+
 const introSlideImageCandidates = [
   ["/images/scenes/prologue_s1_home_code.png", "/image/scence/prologue_s1_home_code.png"],
   ["/images/scenes/prologue_s2_screen_glitch.png", "/image/scence/prologue_s2_screen_glitch.png"],
   ["/images/scenes/prologue_s3_redeyes.png", "/image/scence/prologue_s3_redeyes.png"],
 ];
+
 const introBaseStepMs = 1700;
 const introCharMs = 48;
 const introMinStepMs = 5400;
@@ -23,9 +27,10 @@ const introInterludeReadMs = 9500;
 const introMusicPeakGain = 0.022;
 const introMusicFadeInSec = 2.2;
 const introMusicFadeOutSec = 0.85;
-const introSubtitleFadeOutMs = 400;
-const introSubtitleFadeInMs = 500;
-const introSubtitleSwapGapMs = 140;
+
+// Subtitle fade durations
+const introSubtitleFadeOutMs = 120;
+const introSubtitleFadeInMs = 180;
 
 type IntroAmbienceHandle = {
   ctx: AudioContext;
@@ -47,25 +52,28 @@ export function IntroScene(props: IntroSceneProps) {
   const [isOutroFading, setIsOutroFading] = useState(false);
   const [isInterludeActive, setIsInterludeActive] = useState(false);
   const [isInterludeTextVisible, setIsInterludeTextVisible] = useState(false);
-  // Single-layer scene: only one image is ever in the DOM.
-  // Bridge phase drives a black overlay for scene-to-scene transitions.
+
+  // Single-layer scene image state
   const [displayedSrc, setDisplayedSrc] = useState<string | null>(null);
-  const [sceneToken, setSceneToken] = useState(0);
   const pendingSrcRef = useRef<string | null>(null);
   const [bridgePhase, setBridgePhase] = useState<"idle" | "darkening" | "revealing">("idle");
-  const [subtitleVisual, setSubtitleVisual] = useState<{ current: string; token: number }>({
-    current: "",
-    token: 0,
-  });
+
+  // ==================== SUBTITLE STATE ====================
+  // subtitle transition starts at the same moment the bridge starts darkening —
+  // so image and subtitle are visually synchronised.
+  const [subtitleText, setSubtitleText] = useState("");
+  const [subtitleToken, setSubtitleToken] = useState(0);
   const [subtitlePhase, setSubtitlePhase] = useState<"in" | "steady" | "out">("in");
+
   const ambienceRef = useRef<IntroAmbienceHandle | null>(null);
   const didMusicFadeOutRef = useRef(false);
   const advancedStepRef = useRef<number | null>(null);
   const interludeStartedStepRef = useRef<number | null>(null);
   const subtitleTimersRef = useRef<number[]>([]);
-  const subtitleCurrentRef = useRef("");
-  const subtitleKeyRef = useRef<string | null>(null);
   const interludeTimersRef = useRef<number[]>([]);
+
+  // Track whether this is the very first slide (no crossfade needed for subtitle)
+  const isFirstImageRef = useRef(true);
 
   const clearSubtitleTimers = useCallback(() => {
     subtitleTimersRef.current.forEach((id) => window.clearTimeout(id));
@@ -76,6 +84,8 @@ export function IntroScene(props: IntroSceneProps) {
     interludeTimersRef.current.forEach((id) => window.clearTimeout(id));
     interludeTimersRef.current = [];
   }, []);
+
+  // ==================== FETCH CMD LINES ====================
 
   useEffect(() => {
     let active = true;
@@ -88,7 +98,7 @@ export function IntroScene(props: IntroSceneProps) {
         if (parsed.length) setCmdLines(parsed);
       })
       .catch(() => {
-        // Fallback to the existing intro lines from game data.
+        // Fallback to existing intro lines from game data.
       });
 
     return () => {
@@ -96,8 +106,11 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, []);
 
+  // ==================== COMPUTED VALUES ====================
+
   const sceneCount = introSlideImageCandidates.length;
   const step = Math.min(introStep, sceneCount - 1);
+
   const resolvedLines = useMemo(() => {
     const preferred = currentLang === "tr" && cmdLines && cmdLines.length ? cmdLines : introLines;
     return introSlideImageCandidates.map((_, idx) => preferred[idx] ?? introLines[idx] ?? "");
@@ -107,37 +120,91 @@ export function IntroScene(props: IntroSceneProps) {
   const candidateIndex = imageCandidateByStep[step] ?? 0;
   const imageCandidates = introSlideImageCandidates[step] ?? [];
   const activeImageSrc = imageCandidates[candidateIndex] ?? null;
+
   const stepDurationMs = useMemo(() => {
     const text = (resolvedLines[step] ?? "").replace(/\s+/g, " ").trim();
     const dynamicMs = introBaseStepMs + text.length * introCharMs;
     return Math.max(introMinStepMs, Math.min(introMaxStepMs, dynamicMs));
   }, [resolvedLines, step]);
 
-  // Single-layer bridge: when activeImageSrc changes, fade to black then swap.
+  // ==================== IMAGE BRIDGE + SUBTITLE SYNC ====================
+  // Subtitle fade-out begins the instant the bridge starts darkening (same render),
+  // so image swap and subtitle swap are visually simultaneous.
+
+  const resolvedLinesRef = useRef(resolvedLines);
+  resolvedLinesRef.current = resolvedLines;
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const subtitleTextRef = useRef(subtitleText);
+  subtitleTextRef.current = subtitleText;
+
+  const startSubtitleTransition = useCallback(
+    (nextText: string, immediate: boolean) => {
+      clearSubtitleTimers();
+
+      if (immediate || !subtitleTextRef.current) {
+        setSubtitleText(nextText);
+        setSubtitleToken((prev) => prev + 1);
+        setSubtitlePhase("in");
+        const steadyId = window.setTimeout(
+          () => setSubtitlePhase("steady"),
+          introSubtitleFadeInMs,
+        );
+        subtitleTimersRef.current.push(steadyId);
+        return;
+      }
+
+      if (nextText === subtitleTextRef.current) {
+        setSubtitlePhase("steady");
+        return;
+      }
+
+      // Fade-out then swap then fade-in.
+      setSubtitlePhase("out");
+      const swapId = window.setTimeout(() => {
+        setSubtitleText(nextText);
+        setSubtitleToken((prev) => prev + 1);
+        setSubtitlePhase("in");
+        const steadyId = window.setTimeout(
+          () => setSubtitlePhase("steady"),
+          introSubtitleFadeInMs,
+        );
+        subtitleTimersRef.current.push(steadyId);
+      }, introSubtitleFadeOutMs);
+      subtitleTimersRef.current.push(swapId);
+    },
+    [clearSubtitleTimers],
+  );
+
   useEffect(() => {
     if (!activeImageSrc) return;
     if (displayedSrc === activeImageSrc) return;
 
     if (!displayedSrc) {
       // First image: show immediately, no bridge needed.
+      isFirstImageRef.current = true;
       setDisplayedSrc(activeImageSrc);
-      setSceneToken((t) => t + 1);
+      const nextText = (resolvedLinesRef.current[stepRef.current] ?? "").trim();
+      startSubtitleTransition(nextText, true);
       return;
     }
 
-    // Queue the new src and start darkening.
+    // Start bridge darkening AND subtitle fade-out simultaneously.
+    isFirstImageRef.current = false;
     pendingSrcRef.current = activeImageSrc;
     setBridgePhase("darkening");
-  }, [activeImageSrc, displayedSrc]);
+
+    // Subtitle starts fading out right now — 100ms head-start before image swap.
+    const nextText = (resolvedLinesRef.current[stepRef.current] ?? "").trim();
+    startSubtitleTransition(nextText, false);
+  }, [activeImageSrc, displayedSrc, startSubtitleTransition]);
 
   const handleBridgeTransitionEnd = useCallback(() => {
     setBridgePhase((phase) => {
       if (phase === "darkening") {
-        // Peak reached: swap image and reveal immediately (no hold).
         const next = pendingSrcRef.current;
         if (next) {
           setDisplayedSrc(next);
-          setSceneToken((t) => t + 1);
           pendingSrcRef.current = null;
         }
         return "revealing";
@@ -148,61 +215,6 @@ export function IntroScene(props: IntroSceneProps) {
       return phase;
     });
   }, []);
-
-  useEffect(() => {
-    const nextText = (resolvedLines[step] ?? "").trim();
-    const currentText = subtitleCurrentRef.current;
-    const subtitleKey = `${step}:${nextText}`;
-
-    clearSubtitleTimers();
-
-    if (!currentText) {
-      if (subtitleKeyRef.current === subtitleKey) {
-        setSubtitlePhase("steady");
-        return () => {
-          clearSubtitleTimers();
-        };
-      }
-
-      subtitleKeyRef.current = subtitleKey;
-      subtitleCurrentRef.current = nextText;
-      setSubtitleVisual((prev) => ({ ...prev, current: nextText, token: prev.token + 1 }));
-      setSubtitlePhase("in");
-      const steadyId = window.setTimeout(() => setSubtitlePhase("steady"), introSubtitleFadeInMs);
-      subtitleTimersRef.current.push(steadyId);
-      return () => {
-        clearSubtitleTimers();
-      };
-    }
-
-    if (nextText === currentText) {
-      subtitleKeyRef.current = subtitleKey;
-      setSubtitlePhase("steady");
-      return () => {
-        clearSubtitleTimers();
-      };
-    }
-
-    setSubtitlePhase("out");
-    const swapId = window.setTimeout(() => {
-      if (subtitleKeyRef.current === subtitleKey) {
-        setSubtitlePhase("steady");
-        return;
-      }
-
-      subtitleKeyRef.current = subtitleKey;
-      subtitleCurrentRef.current = nextText;
-      setSubtitleVisual((prev) => ({ ...prev, current: nextText, token: prev.token + 1 }));
-      setSubtitlePhase("in");
-      const steadyId = window.setTimeout(() => setSubtitlePhase("steady"), introSubtitleFadeInMs);
-      subtitleTimersRef.current.push(steadyId);
-    }, introSubtitleFadeOutMs + introSubtitleSwapGapMs);
-    subtitleTimersRef.current.push(swapId);
-
-    return () => {
-      clearSubtitleTimers();
-    };
-  }, [clearSubtitleTimers, resolvedLines, step]);
 
   useEffect(() => {
     return () => {
@@ -216,10 +228,13 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, [clearInterludeTimers]);
 
+  // ==================== AMBIENCE AUDIO ====================
+
   useEffect(() => {
     const AudioCtxCtor =
       window.AudioContext ||
-      (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AudioCtxCtor) return;
 
     const ctx = new AudioCtxCtor();
@@ -309,6 +324,8 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, []);
 
+  // ==================== STEP AUTO-ADVANCE ====================
+
   useEffect(() => {
     if (!isLastStep) {
       setIsOutroFading(false);
@@ -345,6 +362,7 @@ export function IntroScene(props: IntroSceneProps) {
         setIsInterludeTextVisible(true);
       }, introInterludeFadeMs);
       interludeTimersRef.current.push(fadeId);
+
       const exitDelay = introInterludeFadeMs + introInterludeReadMs;
       const exitId = window.setTimeout(() => {
         if (!advanceOnceForStep()) return;
@@ -358,6 +376,8 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, [clearInterludeTimers, isLastStep, onAdvance, step, stepDurationMs]);
 
+  // ==================== MUSIC FADE OUT ON OUTRO ====================
+
   useEffect(() => {
     if (!isOutroFading || didMusicFadeOutRef.current) return;
     const ambience = ambienceRef.current;
@@ -370,6 +390,8 @@ export function IntroScene(props: IntroSceneProps) {
     ambience.masterGain.gain.linearRampToValueAtTime(0.0001, now + introMusicFadeOutSec);
   }, [isOutroFading]);
 
+  // ==================== RENDER ====================
+
   return (
     <div className="screen introScreen">
       <main className={`world introStage ${worldShakeClass}`}>
@@ -378,7 +400,7 @@ export function IntroScene(props: IntroSceneProps) {
             {!displayedSrc && <div className="introArt" />}
             {displayedSrc && (
               <img
-                key={`intro-scene-${sceneToken}`}
+                key={`intro-scene-${displayedSrc}`}
                 className="introSceneImage introSceneImageCurrent"
                 src={displayedSrc}
                 alt={t("intro.sceneAlt", { index: step + 1 })}
@@ -410,12 +432,16 @@ export function IntroScene(props: IntroSceneProps) {
           {!isInterludeActive && (
             <div className="introSubtitleArea" aria-live="polite">
               <p
-                key={`intro-line-${subtitleVisual.token}-${step}`}
+                key={`intro-line-${subtitleToken}`}
                 className={`introSubtitleText ${
-                  subtitlePhase === "out" ? "introSubtitleTextOut" : subtitlePhase === "in" ? "introSubtitleTextIn" : ""
+                  subtitlePhase === "out"
+                    ? "introSubtitleTextOut"
+                    : subtitlePhase === "in"
+                      ? "introSubtitleTextIn"
+                      : ""
                 }`}
               >
-                {subtitleVisual.current}
+                {subtitleText}
               </p>
             </div>
           )}
@@ -453,7 +479,3 @@ export function IntroScene(props: IntroSceneProps) {
     </div>
   );
 }
-
-
-
-
