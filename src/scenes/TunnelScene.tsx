@@ -7,13 +7,9 @@ import {
   type MutableRefObject,
   type PointerEvent,
 } from "react";
-// Fake-walk animation: background zooms/shifts while holding, freeze on release
 import { usePreferredAssetPath } from "../game/usePreferredAssetPath";
 import { useI18n } from "../i18n";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Whisper ambience config
-// ─────────────────────────────────────────────────────────────────────────────
 const WHISPER_BASE = "/audio/tunnel/";
 const WHISPER_CANDIDATES: string[] = [
   "whisper_01.mp3",
@@ -32,24 +28,23 @@ const WHISPER_CANDIDATES: string[] = [
   "whisper_long_02.mp3",
 ];
 
-const WHISPER_FIRST_MIN = 2_000; // ms — first whisper after entering tunnel
-const WHISPER_FIRST_MAX = 5_000; // ms
-const WHISPER_INTERVAL_MIN = 5_000; // ms — gap after a whisper ends (min)
-const WHISPER_INTERVAL_MAX = 10_000; // ms — gap after a whisper ends (max)
+const WHISPER_FIRST_MIN = 2_000;
+const WHISPER_FIRST_MAX = 5_000;
+const WHISPER_INTERVAL_MIN = 5_000;
+const WHISPER_INTERVAL_MAX = 10_000;
 const WHISPER_VOL_MIN = 0.10;
 const WHISPER_VOL_MAX = 0.18;
 const WHISPER_RATE_MIN = 0.92;
 const WHISPER_RATE_MAX = 1.05;
-const WHISPER_PAN_MAX = 0.35; // ±
-const WHISPER_FADE_IN_MIN = 450; // ms — fade-in ramp minimum
-const WHISPER_FADE_IN_MAX = 700; // ms — fade-in ramp maximum
-const WHISPER_FADE_OUT_MIN = 200; // ms — fade-out before natural end (min)
-const WHISPER_FADE_OUT_MAX = 350; // ms — fade-out before natural end (max)
-const WHISPER_BUSY_RETRY_MS = 700; // ms — retry quickly when audio channel is busy
+const WHISPER_PAN_MAX = 0.35;
+const WHISPER_FADE_IN_MIN = 450;
+const WHISPER_FADE_IN_MAX = 700;
+const WHISPER_FADE_OUT_MIN = 200;
+const WHISPER_FADE_OUT_MAX = 350;
+const WHISPER_BUSY_RETRY_MS = 700;
 
 const rndBetween = (min: number, max: number) => min + Math.random() * (max - min);
 
-/** Probe which whisper files actually exist; returns their full URL-paths. */
 function probeWhisperFiles(candidates: string[]): Promise<string[]> {
   const available: string[] = [];
   const promises = candidates.map(
@@ -70,7 +65,6 @@ function probeWhisperFiles(candidates: string[]): Promise<string[]> {
           { once: true }
         );
         audio.addEventListener("error", done, { once: true });
-        // Timeout fallback — some browsers never fire events for missing files
         const tid = window.setTimeout(done, 4_000);
         audio.addEventListener("canplaythrough", () => window.clearTimeout(tid), { once: true });
         audio.addEventListener("error", () => window.clearTimeout(tid), { once: true });
@@ -82,19 +76,18 @@ function probeWhisperFiles(candidates: string[]): Promise<string[]> {
 
 type TunnelSceneProps = {
   worldShakeClass: string;
-  onEnterDoorGame: () => void;
+  onEnterElevator: () => void;
   devToolsEnabled?: boolean;
   onSkipToDoorGame?: () => void;
 };
 
-const PROGRESS_ADVANCE_RATE = 4.125; // tunnel dwell speed (keep as you tuned)
+const PROGRESS_ADVANCE_RATE = 4.125;
 const PROGRESS_REVERSE_RATE = 8;
 
-// Fake-walk tuning (NO BOB, NO X SWAY, NO RESET)
-const WALK_FOLLOW = 28; // higher = visual follows progress faster
-const WALK_DRIFT_MAX_PX = 280; // extra hold-driven drift range
-const WALK_DRIFT_FOLLOW = 32; // drift easing toward target
-const WALK_DRIFT_BOOST_PX = 240; // immediate kick while holding
+const WALK_FOLLOW = 28;
+const WALK_DRIFT_MAX_PX = 280;
+const WALK_DRIFT_FOLLOW = 32;
+const WALK_DRIFT_BOOST_PX = 240;
 const WALK_SCALE_BASE = 1.06;
 const WALK_SCALE_FROM_PROGRESS = 3.0;
 const WALK_SCALE_FROM_DRIFT = 0.12;
@@ -115,9 +108,6 @@ const GLITCH_MILESTONES: { threshold: number; key: string }[] = [
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-// ─────────────────────────────────────────────────────────────────────────────
-// useWhisperAmbience hook — fully self-contained
-// ─────────────────────────────────────────────────────────────────────────────
 function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObject<boolean>): boolean {
   const [audioReady, setAudioReady] = useState(false);
   const availableFilesRef = useRef<string[]>([]);
@@ -137,7 +127,6 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
     activeRef.current = tunnelActive;
   }, [tunnelActive]);
 
-  // Probe files once
   useEffect(() => {
     unmountedRef.current = false;
     setAudioReady(false);
@@ -192,8 +181,7 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
       audio.volume = 0;
 
       try {
-        // @ts-expect-error - webkit prefix
-        const Ctx = window.AudioContext ?? window.webkitAudioContext;
+        const Ctx = window.AudioContext ?? (window as any).webkitAudioContext;
         if (Ctx && (!audioCtxRef.current || audioCtxRef.current.state === "closed")) {
           audioCtxRef.current = new Ctx() as AudioContext;
         }
@@ -220,7 +208,6 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
           currentPanNodeRef.current = panNode;
         }
       } catch {
-        // WebAudio optional
       }
 
       isPlayingRef.current = true;
@@ -233,12 +220,10 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
           try {
             currentSourceRef.current?.disconnect();
           } catch {
-            // ignore
           }
           try {
             currentPanNodeRef.current?.disconnect();
           } catch {
-            // ignore
           }
           currentSourceRef.current = null;
           currentPanNodeRef.current = null;
@@ -324,7 +309,6 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
     playOneWhisperRef.current = playOneWhisper;
   }, [playOneWhisper]);
 
-  // Scheduler deps intentionally locked to tunnelActive + audioReady.
   useEffect(() => {
     if (!tunnelActive || !audioReady) return;
     if (availableFilesRef.current.length === 0) return;
@@ -345,18 +329,16 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
       try {
         currentSourceRef.current?.disconnect();
       } catch {
-        // ignore
       }
       try {
         currentPanNodeRef.current?.disconnect();
       } catch {
-        // ignore
       }
       currentSourceRef.current = null;
       currentPanNodeRef.current = null;
       audioBusyRef.current = false;
     };
-  }, [tunnelActive, audioReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tunnelActive, audioReady]);
 
   useEffect(() => {
     return () => {
@@ -370,17 +352,14 @@ function useWhisperAmbience(tunnelActive: boolean, audioBusyRef: MutableRefObjec
       try {
         currentSourceRef.current?.disconnect();
       } catch {
-        // ignore
       }
       try {
         currentPanNodeRef.current?.disconnect();
       } catch {
-        // ignore
       }
       try {
         audioCtxRef.current?.close();
       } catch {
-        // ignore
       }
       audioBusyRef.current = false;
     };
@@ -393,7 +372,7 @@ const IS_DEV = import.meta.env.DEV;
 
 export function TunnelScene({
   worldShakeClass,
-  onEnterDoorGame,
+  onEnterElevator,
   devToolsEnabled = false,
   onSkipToDoorGame,
 }: TunnelSceneProps) {
@@ -402,14 +381,12 @@ export function TunnelScene({
   const tunnelActive = true;
   const audioBusyRef = useRef(false);
 
-  // Whisper ambience
   useWhisperAmbience(tunnelActive, audioBusyRef);
 
   const tunnelBgPath = usePreferredAssetPath(TUNNEL_BG_CANDIDATES);
   const [progress, setProgress] = useState(0);
   const [isAdvancing, setIsAdvancing] = useState(false);
 
-  // ── Fake-walk: refs used inside rAF (avoid stale closure) ───────────────
   const bgWrapperRef = useRef<HTMLDivElement | null>(null);
   const motionOverlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -439,8 +416,6 @@ export function TunnelScene({
   const lastFlashAtRef = useRef<number>(0);
   const queuedFlashTextRef = useRef<string | null>(null);
   const prevProgressRef = useRef(0);
-  const shownMilestonesRef = useRef<Set<number>>(new Set());
-  const doorRevealTriggeredRef = useRef(false);
 
   const keyForwardRef = useRef(false);
   const keyBackwardRef = useRef(false);
@@ -451,7 +426,6 @@ export function TunnelScene({
     setIsAdvancing((prev) => (prev === next ? prev : next));
   }, []);
 
-  // ── Fake-walk rAF loop (NO bob, NO sway, NO reset) ───────────────────────
   useEffect(() => {
     const loop = (now: number) => {
       if (fwLastTsRef.current === 0) fwLastTsRef.current = now;
@@ -462,11 +436,9 @@ export function TunnelScene({
       const targetP = clamp(fwProgressRef.current / 100, 0, 1);
       const canWalk = fwHoldingRef.current && fwProgressRef.current < 100;
 
-      // Smooth follow of progress (fast follow, no "milim milim")
       const followAlpha = 1 - Math.exp(-WALK_FOLLOW * deltaSeconds);
       fwVisualProgressRef.current += (targetP - fwVisualProgressRef.current) * followAlpha;
 
-      // Extra drift while holding (freeze on release, no hard cap jump)
       if (canWalk) {
         const driftTarget = Math.min(
           WALK_DRIFT_MAX_PX,
@@ -489,14 +461,11 @@ export function TunnelScene({
         el.style.transform = `scale(${sc.toFixed(4)}) translateY(${ty.toFixed(1)}px)`;
       }
 
-      // Motion overlay (adds SPEED feeling without bob/jump)
       const mo = motionOverlayRef.current;
       if (mo) {
-        // opacity smooth via CSS; just toggle a class-like behavior
         mo.style.opacity = canWalk ? "0.18" : "0";
-        // scroll the stripes downward while holding (no jumps, purely visual)
         if (canWalk) {
-          const y = (now * 1.1) % 1000; // much faster scroll
+          const y = (now * 1.1) % 1000;
           mo.style.backgroundPosition = `0px ${y.toFixed(0)}px`;
         }
       }
@@ -510,7 +479,6 @@ export function TunnelScene({
     };
   }, []);
 
-  // Progress loop (unchanged)
   useEffect(() => {
     const loop = (timestamp: number) => {
       if (lastFrameTimeRef.current === 0) {
@@ -541,7 +509,6 @@ export function TunnelScene({
     };
   }, []);
 
-  // Keyboard controls
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
@@ -614,7 +581,8 @@ export function TunnelScene({
     flashTextTimerRef.current = window.setTimeout(() => setFlashText(null), 1400);
   }, []);
 
-  // Milestone detection — single-shot
+  const shownMilestonesRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
     const prev = prevProgressRef.current;
 
@@ -625,21 +593,15 @@ export function TunnelScene({
       }
     });
 
-    if (progress >= 90 && !doorRevealTriggeredRef.current) {
-      doorRevealTriggeredRef.current = true;
-    }
-
     prevProgressRef.current = progress;
   }, [progress, triggerFlash, t]);
 
-  // Auto-advance when progress hits 100
   useEffect(() => {
     if (progress >= 100) {
-      onEnterDoorGame();
+      onEnterElevator();
     }
-  }, [progress, onEnterDoorGame]);
+  }, [progress, onEnterElevator]);
 
-  // Flash effect at high progress
   const flashStage = progress >= 80 ? 2 : progress >= 50 ? 1 : 0;
 
   useEffect(() => {
@@ -672,7 +634,6 @@ export function TunnelScene({
     };
   }, [flashStage]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
@@ -704,8 +665,6 @@ export function TunnelScene({
     [syncAdvanceState]
   );
 
-  const canContinue = progress >= 95;
-
   const hintText = useMemo(() => {
     if (progress < 20) return t("tunnel.hint.1");
     if (progress < 50) return t("tunnel.hint.2");
@@ -717,12 +676,11 @@ export function TunnelScene({
 
   return (
     <div className="screen tunnelScreen" style={{ position: "relative", overflow: "hidden" }}>
-      {/* Fake-walk background wrapper — transform applied by rAF */}
       <div
         ref={bgWrapperRef}
         style={{
           position: "absolute",
-          inset: "-22% -22%", // more overscan to prevent edge leaks with faster motion
+          inset: "-22% -22%",
           willChange: "transform",
           transition: "none",
           transformOrigin: "center center",
@@ -737,7 +695,6 @@ export function TunnelScene({
         }}
       />
 
-      {/* Motion overlay (adds speed feel while holding, no bob/jump) */}
       <div
         ref={motionOverlayRef}
         style={{
@@ -761,7 +718,6 @@ export function TunnelScene({
         }}
       />
 
-      {/* Glitch keyframes + flash overlay CSS — injected once */}
       <style>{`
         @keyframes tunnelGlitch {
           0%   { transform: translateY(0) translateX(0);    filter: none; }
@@ -807,8 +763,7 @@ export function TunnelScene({
         }
       `}</style>
 
-      {/* DEV-only test panel — never shown in production */}
-      {IS_DEV && devToolsEnabled && onSkipToDoorGame && (
+      {IS_DEV && devToolsEnabled && (
         <div
           style={{
             position: "absolute",
@@ -828,24 +783,24 @@ export function TunnelScene({
           <span style={{ color: "#f55", fontSize: 10, fontFamily: "monospace", letterSpacing: 1 }}>
             TEST PANELİ
           </span>
-          <button
-            className="btn ghost"
-            type="button"
-            onClick={onSkipToDoorGame}
-            style={{ minWidth: 116, padding: "6px 10px", fontSize: 12 }}
-          >
-            {t("tunnel.skipDoors")}
-          </button>
+          {onSkipToDoorGame && (
+            <button
+              className="btn ghost"
+              type="button"
+              onClick={onSkipToDoorGame}
+              style={{ minWidth: 116, padding: "6px 10px", fontSize: 12 }}
+            >
+              {t("tunnel.skipDoors")}
+            </button>
+          )}
         </div>
       )}
 
-      {/* World / scene container */}
       <main
         className={`world ${worldShakeClass}`}
         style={{ position: "relative", width: "100%", height: "100%" }}
         aria-label={t("tunnel.worldAria")}
       >
-        {/* Flash overlay */}
         <div
           style={{
             position: "absolute",
@@ -858,7 +813,6 @@ export function TunnelScene({
           }}
         />
 
-        {/* Bottom-right advance button */}
         <div
           style={{
             position: "absolute",
@@ -880,31 +834,12 @@ export function TunnelScene({
             {t("tunnel.advanceHold")}
           </button>
         </div>
-
-        {/* When 95%+ — show continue button */}
-        {canContinue && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 72,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 20,
-            }}
-          >
-            <button className="btn danger" type="button" onClick={onEnterDoorGame}>
-              {t("common.continue")}
-            </button>
-          </div>
-        )}
       </main>
 
-      {/* Threshold message overlay — fixed, above everything */}
       <div className="tunnelFlashWrap" aria-live="assertive">
         {flashText && <div className={"tunnelFlash" + (flashOn ? " on" : "")}>{flashText}</div>}
       </div>
 
-      {/* İç Ses footer — single line */}
       <footer
         style={{
           position: "absolute",

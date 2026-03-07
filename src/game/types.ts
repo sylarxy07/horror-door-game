@@ -4,6 +4,7 @@ export type Scene =
   | "BEACH"
   | "BEACH_WORLD"
   | "TUNNEL"
+  | "ELEVATOR"
   | "DOOR_GAME"
   | "DEMO_END"
   | "GAME_OVER"

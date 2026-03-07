@@ -445,10 +445,12 @@ export function WalkingTamayDemo() {
  */
 export function BeachSceneWithTamay({
   tamayX = 0,
-  tamayLift = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  tamayLift: _tamayLift = 0,
   bob = 0,
   tamayScale = 0.5, // Smaller scale for beach
-  stride = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  stride: _stride = 0,
   moveDir = 0,
   isInspecting = false,
 }: {

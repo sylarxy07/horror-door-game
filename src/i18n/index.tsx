@@ -33,7 +33,7 @@ const getTranslation = (lang: Lang, key: string): TranslationValue | undefined =
 const normalizeLines = (value: TranslationValue | undefined): readonly string[] => {
   if (!value) return [];
   if (Array.isArray(value)) return value;
-  return [value];
+  return [value as string];
 };
 
 function getInitialLang(): Lang {
@@ -58,7 +58,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       const value = getTranslation(currentLang, key);
       if (!value) return key;
       if (Array.isArray(value)) return interpolate(value.join("\n"), params);
-      return interpolate(value, params);
+      return interpolate(value as string, params);
     },
     [currentLang]
   );
@@ -79,6 +79,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nContext.Provider value={contextValue}>{children}</I18nContext.Provider>;
 }
 
+/* eslint-disable react-refresh/only-export-components */
 export function useI18n() {
   const ctx = useContext(I18nContext);
   if (!ctx) {

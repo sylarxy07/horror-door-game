@@ -60,7 +60,8 @@ const CAM_ANCHOR_X_RATIO = 0.50;
 const CAM_LERP = 0.10;
 
 // Pixels per world unit (for screen projection)
-const WORLD_TO_PX = 2.8;
+// Exported for potential use in other modules
+export const WORLD_TO_PX = 2.8;
 
 // 5 objects positioned at EXACT 250m intervals along the path
 const INITIAL_OBJECTS: WorldObject[] = [
@@ -127,9 +128,11 @@ function lerp(a: number, b: number, t: number): number {
 type BeachWorldProps = {
   onBack?: () => void;
   onEnterTunnel?: () => void;
+  devToolsEnabled?: boolean;
+  onSkipToDoorGame?: () => void;
 };
 
-export function BeachWorld({ onBack, onEnterTunnel }: BeachWorldProps) {
+export function BeachWorld({ onBack, onEnterTunnel, devToolsEnabled, onSkipToDoorGame }: BeachWorldProps) {
   // Player state
   const [playerPos, setPlayerPos] = useState<Vector2D>(START_POSITION);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);

@@ -300,7 +300,6 @@ export function BeachWalkingTamay({
 }: BeachWalkingTamayProps) {
   const [hovered, setHovered] = useState(false);
   const [currentWalkFrame, setCurrentWalkFrame] = useState(0);
-  const frameTimeRef = useRef(0);
 
   // Animate walk frames
   useEffect(() => {

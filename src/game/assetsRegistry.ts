@@ -78,6 +78,9 @@ const TAMAY_REQUIRED_FILES: readonly (keyof typeof TAMAY_SPRITES | "walk")[] = [
   "fallback",
 ] as const;
 
+// Export for use in validation
+export { TAMAY_REQUIRED_FILES };
+
 /**
  * Validates Tamay sprite availability and logs warnings for missing files
  * Only runs during development (import.meta.env.DEV)
