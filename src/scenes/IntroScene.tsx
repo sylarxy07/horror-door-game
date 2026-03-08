@@ -9,26 +9,38 @@ type IntroSceneProps = {
   onSkip: () => void;
 };
 
-// ==================== SLIDE DATA ====================
-// Single source of truth: each slide has image candidates, text key, and duration.
+type IntroMediaCandidate =
+  | { kind: "image"; src: string }
+  | { kind: "video"; src: string };
 
-const introSlideImageCandidates = [
-  ["/images/scenes/prologue_s1_home_code.png", "/image/scence/prologue_s1_home_code.png"],
-  ["/images/scenes/prologue_s2_screen_glitch.png", "/image/scence/prologue_s2_screen_glitch.png"],
-  ["/images/scenes/prologue_s3_redeyes.png", "/image/scence/prologue_s3_redeyes.png"],
-];
+  const introSlideMediaCandidates: IntroMediaCandidate[][] = [
+    [
+      { kind: "video", src: "/video/intro/scene1.mp4" },
+      { kind: "image", src: "/images/scenes/prologue_s1_home_code.png" },
+      { kind: "image", src: "/image/scence/prologue_s1_home_code.png" },
+    ],
+    [
+      { kind: "video", src: "/video/intro/scene2.mp4" },
+      { kind: "image", src: "/images/scenes/prologue_s2_screen_glitch.png" },
+      { kind: "image", src: "/image/scence/prologue_s2_screen_glitch.png" },
+    ],
+    [
+      { kind: "video", src: "/video/intro/scene3.mp4" },
+      { kind: "image", src: "/images/scenes/prologue_s3_redeyes.png" },
+      { kind: "image", src: "/image/scence/prologue_s3_redeyes.png" },
+    ],
+  ];
 
 const introBaseStepMs = 1700;
 const introCharMs = 48;
 const introMinStepMs = 5400;
 const introMaxStepMs = 9800;
-const introInterludeFadeMs = 400;
+const introInterludeFadeMs = 1200;
 const introInterludeReadMs = 9500;
 const introMusicPeakGain = 0.022;
 const introMusicFadeInSec = 2.2;
 const introMusicFadeOutSec = 0.85;
 
-// Subtitle fade durations
 const introSubtitleFadeOutMs = 120;
 const introSubtitleFadeInMs = 180;
 
@@ -48,19 +60,15 @@ export function IntroScene(props: IntroSceneProps) {
   const { currentLang, t } = useI18n();
   const { worldShakeClass, introStep, introLines, onAdvance } = props;
   const [cmdLines, setCmdLines] = useState<string[] | null>(null);
-  const [imageCandidateByStep, setImageCandidateByStep] = useState<Record<number, number>>({});
+  const [mediaCandidateByStep, setMediaCandidateByStep] = useState<Record<number, number>>({});
   const [isOutroFading, setIsOutroFading] = useState(false);
   const [isInterludeActive, setIsInterludeActive] = useState(false);
   const [isInterludeTextVisible, setIsInterludeTextVisible] = useState(false);
 
-  // Single-layer scene image state
-  const [displayedSrc, setDisplayedSrc] = useState<string | null>(null);
-  const pendingSrcRef = useRef<string | null>(null);
+  const [displayedMedia, setDisplayedMedia] = useState<IntroMediaCandidate | null>(null);
+  const pendingMediaRef = useRef<IntroMediaCandidate | null>(null);
   const [bridgePhase, setBridgePhase] = useState<"idle" | "darkening" | "revealing">("idle");
 
-  // ==================== SUBTITLE STATE ====================
-  // subtitle transition starts at the same moment the bridge starts darkening —
-  // so image and subtitle are visually synchronised.
   const [subtitleText, setSubtitleText] = useState("");
   const [subtitleToken, setSubtitleToken] = useState(0);
   const [subtitlePhase, setSubtitlePhase] = useState<"in" | "steady" | "out">("in");
@@ -71,8 +79,6 @@ export function IntroScene(props: IntroSceneProps) {
   const interludeStartedStepRef = useRef<number | null>(null);
   const subtitleTimersRef = useRef<number[]>([]);
   const interludeTimersRef = useRef<number[]>([]);
-
-  // Track whether this is the very first slide (no crossfade needed for subtitle)
   const isFirstImageRef = useRef(true);
 
   const clearSubtitleTimers = useCallback(() => {
@@ -84,8 +90,6 @@ export function IntroScene(props: IntroSceneProps) {
     interludeTimersRef.current.forEach((id) => window.clearTimeout(id));
     interludeTimersRef.current = [];
   }, []);
-
-  // ==================== FETCH CMD LINES ====================
 
   useEffect(() => {
     let active = true;
@@ -106,30 +110,28 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, []);
 
-  // ==================== COMPUTED VALUES ====================
-
-  const sceneCount = introSlideImageCandidates.length;
+  const sceneCount = introSlideMediaCandidates.length;
   const step = Math.min(introStep, sceneCount - 1);
 
   const resolvedLines = useMemo(() => {
     const preferred = currentLang === "tr" && cmdLines && cmdLines.length ? cmdLines : introLines;
-    return introSlideImageCandidates.map((_, idx) => preferred[idx] ?? introLines[idx] ?? "");
+    return introSlideMediaCandidates.map((_, idx) => preferred[idx] ?? introLines[idx] ?? "");
   }, [cmdLines, currentLang, introLines]);
 
   const isLastStep = step >= sceneCount - 1;
-  const candidateIndex = imageCandidateByStep[step] ?? 0;
-  const imageCandidates = introSlideImageCandidates[step] ?? [];
-  const activeImageSrc = imageCandidates[candidateIndex] ?? null;
+  const candidateIndex = mediaCandidateByStep[step] ?? 0;
+  const mediaCandidates = introSlideMediaCandidates[step] ?? [];
+  const activeMedia = mediaCandidates[candidateIndex] ?? null;
 
   const stepDurationMs = useMemo(() => {
     const text = (resolvedLines[step] ?? "").replace(/\s+/g, " ").trim();
     const dynamicMs = introBaseStepMs + text.length * introCharMs;
-    return Math.max(introMinStepMs, Math.min(introMaxStepMs, dynamicMs));
+    const clampedMs = Math.max(introMinStepMs, Math.min(introMaxStepMs, dynamicMs));
+  
+    if (step === 1) return clampedMs + 1200;
+  
+    return clampedMs;
   }, [resolvedLines, step]);
-
-  // ==================== IMAGE BRIDGE + SUBTITLE SYNC ====================
-  // Subtitle fade-out begins the instant the bridge starts darkening (same render),
-  // so image swap and subtitle swap are visually simultaneous.
 
   const resolvedLinesRef = useRef(resolvedLines);
   resolvedLinesRef.current = resolvedLines;
@@ -146,10 +148,7 @@ export function IntroScene(props: IntroSceneProps) {
         setSubtitleText(nextText);
         setSubtitleToken((prev) => prev + 1);
         setSubtitlePhase("in");
-        const steadyId = window.setTimeout(
-          () => setSubtitlePhase("steady"),
-          introSubtitleFadeInMs,
-        );
+        const steadyId = window.setTimeout(() => setSubtitlePhase("steady"), introSubtitleFadeInMs);
         subtitleTimersRef.current.push(steadyId);
         return;
       }
@@ -159,16 +158,12 @@ export function IntroScene(props: IntroSceneProps) {
         return;
       }
 
-      // Fade-out then swap then fade-in.
       setSubtitlePhase("out");
       const swapId = window.setTimeout(() => {
         setSubtitleText(nextText);
         setSubtitleToken((prev) => prev + 1);
         setSubtitlePhase("in");
-        const steadyId = window.setTimeout(
-          () => setSubtitlePhase("steady"),
-          introSubtitleFadeInMs,
-        );
+        const steadyId = window.setTimeout(() => setSubtitlePhase("steady"), introSubtitleFadeInMs);
         subtitleTimersRef.current.push(steadyId);
       }, introSubtitleFadeOutMs);
       subtitleTimersRef.current.push(swapId);
@@ -177,35 +172,38 @@ export function IntroScene(props: IntroSceneProps) {
   );
 
   useEffect(() => {
-    if (!activeImageSrc) return;
-    if (displayedSrc === activeImageSrc) return;
+    if (!activeMedia) return;
 
-    if (!displayedSrc) {
-      // First image: show immediately, no bridge needed.
+    const sameMedia =
+      displayedMedia &&
+      displayedMedia.kind === activeMedia.kind &&
+      displayedMedia.src === activeMedia.src;
+
+    if (sameMedia) return;
+
+    if (!displayedMedia) {
       isFirstImageRef.current = true;
-      setDisplayedSrc(activeImageSrc);
+      setDisplayedMedia(activeMedia);
       const nextText = (resolvedLinesRef.current[stepRef.current] ?? "").trim();
       startSubtitleTransition(nextText, true);
       return;
     }
 
-    // Start bridge darkening AND subtitle fade-out simultaneously.
     isFirstImageRef.current = false;
-    pendingSrcRef.current = activeImageSrc;
+    pendingMediaRef.current = activeMedia;
     setBridgePhase("darkening");
 
-    // Subtitle starts fading out right now — 100ms head-start before image swap.
     const nextText = (resolvedLinesRef.current[stepRef.current] ?? "").trim();
     startSubtitleTransition(nextText, false);
-  }, [activeImageSrc, displayedSrc, startSubtitleTransition]);
+  }, [activeMedia, displayedMedia, startSubtitleTransition]);
 
   const handleBridgeTransitionEnd = useCallback(() => {
     setBridgePhase((phase) => {
       if (phase === "darkening") {
-        const next = pendingSrcRef.current;
+        const next = pendingMediaRef.current;
         if (next) {
-          setDisplayedSrc(next);
-          pendingSrcRef.current = null;
+          setDisplayedMedia(next);
+          pendingMediaRef.current = null;
         }
         return "revealing";
       }
@@ -228,13 +226,10 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, [clearInterludeTimers]);
 
-  // ==================== AMBIENCE AUDIO ====================
-
   useEffect(() => {
     const AudioCtxCtor =
       window.AudioContext ||
-      (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
+      (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioCtxCtor) return;
 
     const ctx = new AudioCtxCtor();
@@ -299,12 +294,12 @@ export function IntroScene(props: IntroSceneProps) {
       const ambience = ambienceRef.current;
       if (!ambience) return;
 
-      const t = ambience.ctx.currentTime;
-      ambience.masterGain.gain.cancelScheduledValues(t);
-      ambience.masterGain.gain.setValueAtTime(ambience.masterGain.gain.value, t);
-      ambience.masterGain.gain.linearRampToValueAtTime(0.0001, t + introMusicFadeOutSec);
+      const tNow = ambience.ctx.currentTime;
+      ambience.masterGain.gain.cancelScheduledValues(tNow);
+      ambience.masterGain.gain.setValueAtTime(ambience.masterGain.gain.value, tNow);
+      ambience.masterGain.gain.linearRampToValueAtTime(0.0001, tNow + introMusicFadeOutSec);
 
-      const stopAt = t + introMusicFadeOutSec + 0.08;
+      const stopAt = tNow + introMusicFadeOutSec + 0.08;
       ambience.nodes.forEach((node) => {
         try {
           node.stop(stopAt);
@@ -323,8 +318,6 @@ export function IntroScene(props: IntroSceneProps) {
       didMusicFadeOutRef.current = false;
     };
   }, []);
-
-  // ==================== STEP AUTO-ADVANCE ====================
 
   useEffect(() => {
     if (!isLastStep) {
@@ -376,8 +369,6 @@ export function IntroScene(props: IntroSceneProps) {
     };
   }, [clearInterludeTimers, isLastStep, onAdvance, step, stepDurationMs]);
 
-  // ==================== MUSIC FADE OUT ON OUTRO ====================
-
   useEffect(() => {
     if (!isOutroFading || didMusicFadeOutRef.current) return;
     const ambience = ambienceRef.current;
@@ -390,30 +381,57 @@ export function IntroScene(props: IntroSceneProps) {
     ambience.masterGain.gain.linearRampToValueAtTime(0.0001, now + introMusicFadeOutSec);
   }, [isOutroFading]);
 
-  // ==================== RENDER ====================
+  const handleMediaError = useCallback(() => {
+    setMediaCandidateByStep((prev) => {
+      const next = (prev[step] ?? 0) + 1;
+      if (next >= mediaCandidates.length) return prev;
+      return { ...prev, [step]: next };
+    });
+  }, [mediaCandidates.length, step]);
+
+  const displayedMediaKey = displayedMedia ? `${displayedMedia.kind}:${displayedMedia.src}` : "empty";
+  const displayedMediaStyle =
+    displayedMedia?.kind === "video" && displayedMedia.src === "/video/intro/scene2.mp4"
+      ? {
+          objectFit: "cover" as const,
+          transform: "scale(1.16) translateX(-4%)",
+          transformOrigin: "center center",
+        }
+      : undefined;
 
   return (
     <div className="screen introScreen">
       <main className={`world introStage ${worldShakeClass}`}>
         <div className="worldSurface">
           <div className="introSceneLayer">
-            {!displayedSrc && <div className="introArt" />}
-            {displayedSrc && (
+            {!displayedMedia && <div className="introArt" />}
+
+            {displayedMedia?.kind === "image" && (
               <img
-                key={`intro-scene-${displayedSrc}`}
+                key={`intro-scene-${displayedMediaKey}`}
                 className="introSceneImage introSceneImageCurrent"
-                src={displayedSrc}
+                src={displayedMedia.src}
                 alt={t("intro.sceneAlt", { index: step + 1 })}
                 loading="eager"
-                onError={() => {
-                  setImageCandidateByStep((prev) => {
-                    const next = (prev[step] ?? 0) + 1;
-                    if (next > imageCandidates.length) return prev;
-                    return { ...prev, [step]: next };
-                  });
-                }}
+                onError={handleMediaError}
               />
             )}
+
+            {displayedMedia?.kind === "video" && (
+              <video
+                key={`intro-scene-${displayedMediaKey}`}
+                className="introSceneImage introSceneImageCurrent"
+                src={displayedMedia.src}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                style={displayedMediaStyle}
+                onError={handleMediaError}
+              />
+            )}
+
             <div
               className={`introSceneBridge ${bridgePhase === "darkening" ? "dark" : ""}`}
               onTransitionEnd={handleBridgeTransitionEnd}
@@ -423,11 +441,7 @@ export function IntroScene(props: IntroSceneProps) {
           <div className="introFog" />
           <div className="introVignette" />
 
-          <div className="introSignalDot" aria-hidden="true" />
-          <div className="introEyes" aria-hidden="true">
-            <span className="introEye introEyeLeft" />
-            <span className="introEye introEyeRight" />
-          </div>
+          
 
           {!isInterludeActive && (
             <div className="introSubtitleArea" aria-live="polite">
@@ -454,7 +468,7 @@ export function IntroScene(props: IntroSceneProps) {
                   color: "rgba(245,247,252,.96)",
                   opacity: isInterludeTextVisible ? 1 : 0,
                   transform: `translateY(${isInterludeTextVisible ? 0 : 4}px)`,
-                  transition: "opacity 220ms ease, transform 220ms ease",
+                  transition: "opacity 420ms ease, transform 220ms ease",
                   fontSize: "clamp(16px, 3.6vw, 27px)",
                   fontWeight: 600,
                   lineHeight: 1.45,

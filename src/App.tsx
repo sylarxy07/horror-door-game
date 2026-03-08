@@ -43,11 +43,28 @@ const BEACH_ENTRY_PRELOAD_SOURCES = [
   "/assets/img/beach/obj1_key.png",
   "/assets/img/beach/obj3_note.png",
 ] as const;
+
+const INTRO_AUDIO = {
+  typing: "/audio/intro/typing.mp3",
+  hum: "/audio/intro/computer-hum.mp3",
+  room: "/audio/intro/room-tone.mp3",
+  glitch: "/audio/intro/glitch.mp3",
+  redEyesBoom: "/audio/intro/red-eyes-boom.mp3",
+  rainThunder: "/audio/intro/rain-thunder.mp3",
+} as const;
+
 type DoorEventOverlay = {
   key: number;
   kind: "SAFE" | "MONSTER" | "CURSE";
   text: string;
 } | null;
+
+type IntroAudioRefs = {
+  typing: HTMLAudioElement | null;
+  hum: HTMLAudioElement | null;
+  room: HTMLAudioElement | null;
+  rainThunder: HTMLAudioElement | null;
+};
 
 function preloadImageSources(sources: readonly string[]) {
   if (typeof window === "undefined") return Promise.resolve();
@@ -136,6 +153,14 @@ export default function App() {
   const doorEventCounterRef = useRef(0);
   const beachPreloadPromiseRef = useRef<Promise<void> | null>(null);
   const introToBeachTransitionTokenRef = useRef(0);
+  const introAudioRefs = useRef<IntroAudioRefs>({
+    typing: null,
+    hum: null,
+    room: null,
+    rainThunder: null,
+  });
+  const introAudioStartedRef = useRef(false);
+  const introRainTimeoutRef = useRef<number | null>(null);
 
   // refs for smooth camera loop
   const tamayPosRef = useRef(tamayPos);
@@ -301,9 +326,124 @@ export default function App() {
     timeoutRefs.current = [];
   }, []);
 
+  const stopIntroSceneOneAudio = useCallback(() => {
+    if (introRainTimeoutRef.current !== null) {
+      window.clearTimeout(introRainTimeoutRef.current);
+      introRainTimeoutRef.current = null;
+    }
+
+    const refs = introAudioRefs.current;
+
+    (Object.keys(refs) as Array<keyof IntroAudioRefs>).forEach((key) => {
+      const audio = refs[key];
+      if (!audio) return;
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = "";
+      refs[key] = null;
+    });
+
+    introAudioStartedRef.current = false;
+  }, []);
+
+  const startIntroSceneOneAudio = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (introAudioStartedRef.current) return;
+
+    const room = new Audio(INTRO_AUDIO.room);
+    room.preload = "auto";
+    room.loop = true;
+    room.volume = 0.22;
+
+    const hum = new Audio(INTRO_AUDIO.hum);
+    hum.preload = "auto";
+    hum.loop = true;
+    hum.volume = 0.18;
+    hum.addEventListener("loadedmetadata", () => {
+      hum.currentTime = 10;
+    });
+
+    const typing = new Audio(INTRO_AUDIO.typing);
+    typing.preload = "auto";
+    typing.loop = false;
+    typing.volume = 0.34;
+    typing.playbackRate = 0.74;
+
+    const rainThunder = new Audio(INTRO_AUDIO.rainThunder);
+    rainThunder.preload = "auto";
+    rainThunder.loop = false;
+    rainThunder.volume = 0.12;
+
+    introAudioRefs.current = {
+      room,
+      hum,
+      typing,
+      rainThunder,
+    };
+    introAudioStartedRef.current = true;
+
+    void room.play().catch(() => undefined);
+    void hum.play().catch(() => undefined);
+    void typing.play().catch(() => undefined);
+    void rainThunder.play().catch(() => undefined);
+    introRainTimeoutRef.current = window.setTimeout(() => {
+      rainThunder.pause();
+      rainThunder.currentTime = 0;
+      introRainTimeoutRef.current = null;
+    }, 6000);
+  }, []);
+
   useEffect(() => {
-    return () => clearAllTimeouts();
-  }, [clearAllTimeouts]);
+    return () => {
+      clearAllTimeouts();
+      stopIntroSceneOneAudio();
+    };
+  }, [clearAllTimeouts, stopIntroSceneOneAudio]);
+
+  useEffect(() => {
+    if (scene === "INTRO" && introStep === 0 && !isTransitioning) {
+      startIntroSceneOneAudio();
+      return;
+    }
+
+    stopIntroSceneOneAudio();
+  }, [scene, introStep, isTransitioning, startIntroSceneOneAudio, stopIntroSceneOneAudio]);
+
+  useEffect(() => {
+    if (scene !== "INTRO" || introStep !== 1) return;
+
+    const glitch = new Audio(INTRO_AUDIO.glitch);
+    glitch.preload = "auto";
+    glitch.volume = 0.3;
+
+    const timeoutId = window.setTimeout(() => {
+      void glitch.play().catch(() => undefined);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      glitch.pause();
+      glitch.currentTime = 0;
+    };
+  }, [scene, introStep]);
+
+  useEffect(() => {
+    if (scene !== "INTRO" || introStep !== 2) return;
+
+    const boom = new Audio(INTRO_AUDIO.redEyesBoom);
+    boom.preload = "auto";
+    boom.volume = 0.28;
+
+    const timeoutId = window.setTimeout(() => {
+      void boom.play().catch(() => undefined);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      boom.pause();
+      boom.currentTime = 0;
+    };
+  }, [scene, introStep]);
 
   const triggerDoorHitPulse = useCallback((pulseCount: 1 | 2) => {
     setDoorHitPulseKey((prev) => prev + 1);
@@ -392,6 +532,7 @@ export default function App() {
   const resetFullGameState = () => {
     introToBeachTransitionTokenRef.current += 1;
     clearAllTimeouts();
+    stopIntroSceneOneAudio();
 
     setScene("MENU");
     setIntroStep(0);
@@ -448,25 +589,28 @@ export default function App() {
   const jumpToBeachWorld = useCallback(() => {
     introToBeachTransitionTokenRef.current += 1;
     clearAllTimeouts();
+    stopIntroSceneOneAudio();
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
     setBeachSceneResetKey((prev) => prev + 1);
     setScene("BEACH");
-  }, [clearAllTimeouts]);
+  }, [clearAllTimeouts, stopIntroSceneOneAudio]);
 
   const jumpToTunnel = useCallback(() => {
     introToBeachTransitionTokenRef.current += 1;
     clearAllTimeouts();
+    stopIntroSceneOneAudio();
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
     setScene("TUNNEL");
-  }, [clearAllTimeouts]);
+  }, [clearAllTimeouts, stopIntroSceneOneAudio]);
 
   const jumpToDoorGame = useCallback(() => {
     introToBeachTransitionTokenRef.current += 1;
     clearAllTimeouts();
+    stopIntroSceneOneAudio();
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
@@ -485,17 +629,18 @@ export default function App() {
     setDoorHint(t("door.hint.start"));
     setDoorEventOverlay(null);
     setScene("DOOR_GAME");
-  }, [clearAllTimeouts, t]);
+  }, [clearAllTimeouts, stopIntroSceneOneAudio, t]);
 
   const jumpToElevator = useCallback(() => {
     introToBeachTransitionTokenRef.current += 1;
     clearAllTimeouts();
+    stopIntroSceneOneAudio();
     setFadeOn(false);
     setIsTransitioning(false);
     setMoveDir(0);
     setElevatorSceneResetKey((prev) => prev + 1);
     setScene("ELEVATOR");
-  }, [clearAllTimeouts]);
+  }, [clearAllTimeouts, stopIntroSceneOneAudio]);
 
   useEffect(() => {
     if (!devToolsEnabled) return;

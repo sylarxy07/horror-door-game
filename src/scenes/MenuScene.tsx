@@ -35,7 +35,6 @@ export function MenuScene({ onStart }: MenuSceneProps) {
 
   const renderMainPanel = () => (
     <div className={`menuMobileLayout ${mounted ? "menuMounted" : ""}`}>
-      {/* Full-screen atmospheric art background */}
       <div className="menuSceneArt" aria-hidden="true">
         <div className="menuSceneFog menuSceneFog1" />
         <div className="menuSceneFog menuSceneFog2" />
@@ -44,14 +43,9 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         <div className="menuSceneBeam" />
 
         <div className="menuSceneFloor" />
-        <div className="menuSceneEyes">
-          <div className="menuSceneEye menuSceneEye--l" />
-          <div className="menuSceneEye menuSceneEye--r" />
-        </div>
         <div className="menuSceneBottomFog" />
       </div>
 
-      {/* Noise overlay */}
       <div className="menuNoise" />
 
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 8 }}>
@@ -77,10 +71,8 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         </select>
       </div>
 
-      {/* Gradient overlay: ust ve alt icerik alanlarini okunakli kilar */}
       <div className="menuMobileOverlay" />
 
-      {/* Top: Logo */}
       <div className="menuMobileTop">
         <div className="menuLogoEyebrow">{t("menu.logoEyebrow")}</div>
         <h1 className="menuLogo">
@@ -94,7 +86,6 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         <p className="menuTagline">{t("menu.tagline")}</p>
       </div>
 
-      {/* Bottom: Nav buttons + Footer */}
       <div className="menuMobileBottom">
         <nav className="menuNav" aria-label={t("menu.mainNavAria")}>
           {menuItems.map((item, i) => (
@@ -108,9 +99,7 @@ export function MenuScene({ onStart }: MenuSceneProps) {
               disabled={item.disabled}
               aria-disabled={item.disabled}
             >
-              <span className="menuNavBtnBar" />
               <span className="menuNavBtnLabel">{item.label}</span>
-              {item.variant === "primary" && <span className="menuNavBtnArrow">{"\u203a"}</span>}
             </button>
           ))}
         </nav>
@@ -128,7 +117,6 @@ export function MenuScene({ onStart }: MenuSceneProps) {
     <div className={`menuSettingsLayout ${mounted ? "menuMounted" : ""}`}>
       <div className="menuNoise" />
 
-      {/* Header */}
       <div className="settingsTopBar">
         <button
           id="settings-back"
@@ -145,7 +133,6 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         </div>
       </div>
 
-      {/* Tab bar */}
       <div className="settingsTabBar" role="tablist" aria-label={t("menu.settingsTabs")}>
         {(["VIDEO", "AUDIO", "LANG"] as SettingsTab[]).map((tab) => {
           const labels: Record<SettingsTab, string> = {
@@ -174,7 +161,6 @@ export function MenuScene({ onStart }: MenuSceneProps) {
         })}
       </div>
 
-      {/* Body */}
       <div className="settingsPanelBody">
         {settingsTab === "VIDEO" && (
           <div className="settingsGroup">
