@@ -53,6 +53,12 @@ const INTRO_AUDIO = {
   rainThunder: "/audio/intro/rain-thunder.mp3",
 } as const;
 
+const DOOR_AUDIO = {
+  safe: "/audio/door/safe.mp3",
+  monster: "/audio/door/monster.mp3",
+  curse: "/audio/door/curse.mp3",
+} as const;
+
 type DoorEventOverlay = {
   key: number;
   kind: "SAFE" | "MONSTER" | "CURSE";
@@ -473,6 +479,17 @@ export default function App() {
       const staticAudio = new Audio("/audio/sfx/static.mp3");
       staticAudio.volume = 0.12;
       void staticAudio.play().catch(() => undefined);
+    } catch {
+    }
+  }, []);
+
+  const playDoorSfx = useCallback((src: string, volume = 0.5, playbackRate = 1) => {
+    if (typeof window === "undefined") return;
+    try {
+      const audio = new Audio(src);
+      audio.volume = volume;
+      audio.playbackRate = playbackRate;
+      void audio.play().catch(() => undefined);
     } catch {
     }
   }, []);
@@ -959,6 +976,7 @@ export default function App() {
     if (outcome === "SAFE") {
       setDoorHint(t("door.hint.unlocked"));
       showDoorEventOverlay("SAFE", t("door.event.unlocked"), 740);
+      playDoorSfx(DOOR_AUDIO.safe, 0.42, 1);
 
       addTimeout(() => {
         setCarryoverCurseActive(carryoverCursePending);
@@ -973,9 +991,11 @@ export default function App() {
     if (outcome === "CURSE") {
       setCarryoverCursePending(true);
       showDoorEventOverlay("CURSE", t("door.event.curse"), 620);
+      playDoorSfx(DOOR_AUDIO.curse, 0.5, 0.96);
     } else {
       showDoorEventOverlay("MONSTER", t("door.event.monster"), 620);
       playStaticIfAvailable();
+      playDoorSfx(DOOR_AUDIO.monster, 0.56, 1);
     }
     const nextLives = clamp(lives - damage, 0, MAX_LIVES);
     setLives(nextLives);
