@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLevelConfig } from "./game/levelConfig";
 import {
-  CHECKPOINT_LEVEL,
   DOOR_COUNT,
   INITIAL_CLUES,
   INITIAL_PUZZLES,
@@ -33,7 +32,7 @@ import "./game/game.css";
 import "./game/demo-overrides.css";
 
 const EPISODE_1_MAX_FLOOR = 5;
-const ROOMS_PER_FLOOR = 1;
+const ROOMS_PER_FLOOR = 3;
 const SCENE_FADE_MS = 500;
 const BEACH_ENTRY_PRELOAD_SOURCES = [
   "/assets/img/beach/beach_b0_key.png",
@@ -141,6 +140,7 @@ export default function App() {
   const [room, setRoom] = useState(1);
   const [lives, setLives] = useState(MAX_LIVES);
   const [checkpointUnlocked, setCheckpointUnlocked] = useState(false);
+  const [currentCheckpointLevel, setCurrentCheckpointLevel] = useState(1);
   const [carryoverCurseActive, setCarryoverCurseActive] = useState(false);
   const [carryoverCursePending, setCarryoverCursePending] = useState(false);
 
@@ -494,6 +494,55 @@ export default function App() {
     }
   }, []);
 
+  const playDoorSfxSegment = useCallback((
+    src: string,
+    startAt = 0,
+    endAt = 1,
+    volume = 0.5,
+    playbackRate = 1
+  ) => {
+    if (typeof window === "undefined") return;
+    try {
+      const audio = new Audio(src);
+      audio.volume = volume;
+      audio.playbackRate = playbackRate;
+
+      const safeStartAt = Math.max(0, startAt);
+      const safeEndAt = Math.max(safeStartAt, endAt);
+      const safePlaybackRate = playbackRate > 0 ? playbackRate : 1;
+
+      const startSegmentPlayback = () => {
+        try {
+          audio.currentTime = safeStartAt;
+        } catch {
+        }
+
+        void audio.play().then(() => {
+          const segmentSeconds = safeEndAt - safeStartAt;
+          if (segmentSeconds <= 0) {
+            audio.pause();
+            return;
+          }
+
+          window.setTimeout(() => {
+            try {
+              audio.pause();
+            } catch {
+            }
+          }, (segmentSeconds / safePlaybackRate) * 1000);
+        }).catch(() => undefined);
+      };
+
+      if (audio.readyState >= 1) {
+        startSegmentPlayback();
+        return;
+      }
+
+      audio.addEventListener("loadedmetadata", startSegmentPlayback, { once: true });
+    } catch {
+    }
+  }, []);
+
   const triggerShake = useCallback((strength: 1 | 2) => {
     setShake(strength);
     addTimeout(() => setShake(0), strength === 2 ? 320 : 180);
@@ -581,6 +630,7 @@ export default function App() {
     setRoom(1);
     setLives(MAX_LIVES);
     setCheckpointUnlocked(false);
+    setCurrentCheckpointLevel(1);
     setCarryoverCurseActive(false);
     setCarryoverCursePending(false);
     setRoundLayout(createRoundLayout());
@@ -635,6 +685,7 @@ export default function App() {
     setRoom(1);
     setLives(MAX_LIVES);
     setCheckpointUnlocked(false);
+    setCurrentCheckpointLevel(1);
     setCarryoverCurseActive(false);
     setCarryoverCursePending(false);
     setRoundLayout(createRoundLayout());
@@ -937,6 +988,7 @@ export default function App() {
     setRoom(1);
     setLives(MAX_LIVES);
     setCheckpointUnlocked(false);
+    setCurrentCheckpointLevel(1);
     setCarryoverCurseActive(false);
     setCarryoverCursePending(false);
     setRoundLayout(createRoundLayout());
@@ -976,11 +1028,28 @@ export default function App() {
     if (outcome === "SAFE") {
       setDoorHint(t("door.hint.unlocked"));
       showDoorEventOverlay("SAFE", t("door.event.unlocked"), 740);
-      playDoorSfx(DOOR_AUDIO.safe, 0.42, 1);
+      playDoorSfxSegment(DOOR_AUDIO.safe, 0, 1, 0.42, 1);
 
       addTimeout(() => {
         setCarryoverCurseActive(carryoverCursePending);
         setCarryoverCursePending(false);
+
+        if (room < ROOMS_PER_FLOOR) {
+          setRoom(room + 1);
+          prepareNextRoom(t("door.hint.start"));
+          return;
+        }
+
+        if (level < EPISODE_1_MAX_FLOOR) {
+          const nextLevel = level + 1;
+          setLevel(nextLevel);
+          setRoom(1);
+          setCurrentCheckpointLevel(nextLevel);
+          setCheckpointUnlocked(nextLevel >= 2);
+          prepareNextRoom(t("door.hint.start"));
+          return;
+        }
+
         setDoorInputLocked(false);
         setScene("DEMO_END");
       }, 760);
@@ -1036,10 +1105,10 @@ export default function App() {
     setShake(0);
 
     setScene("DOOR_GAME");
-    setLevel(CHECKPOINT_LEVEL);
+    setLevel(currentCheckpointLevel);
     setRoom(1);
     setLives(MAX_LIVES);
-    setCheckpointUnlocked(true);
+    setCheckpointUnlocked(currentCheckpointLevel > 1);
     setCarryoverCurseActive(false);
     setCarryoverCursePending(false);
     setDoorHitPulseKey(0);
@@ -1570,7 +1639,7 @@ export default function App() {
           maxLives={MAX_LIVES}
           corruptionActive={carryoverCurseActive}
           checkpointUnlocked={checkpointUnlocked}
-          checkpointLevel={CHECKPOINT_LEVEL}
+          checkpointLevel={currentCheckpointLevel}
           doorCount={DOOR_COUNT}
           doorInputLocked={doorInputLocked}
           hitPulseKey={doorHitPulseKey}
@@ -1591,7 +1660,7 @@ export default function App() {
         <GameOverScene
           level={level}
           checkpointUnlocked={checkpointUnlocked}
-          checkpointLevel={CHECKPOINT_LEVEL}
+          checkpointLevel={currentCheckpointLevel}
           onRetryFromCheckpoint={retryFromCheckpoint}
           onRetryToMenu={retryToMenu}
         />
